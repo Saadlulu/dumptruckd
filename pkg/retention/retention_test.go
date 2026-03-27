@@ -12,7 +12,7 @@ func TestCleanup_ZeroDays_DoesNothing(t *testing.T) {
 
 	// Create a file
 	testFile := filepath.Join(tmpDir, "old-backup.sql")
-	os.WriteFile(testFile, []byte("data"), 0644)
+	_ = os.WriteFile(testFile, []byte("data"), 0644)
 
 	r := New(tmpDir, 0)
 	err := r.Cleanup()
@@ -31,9 +31,9 @@ func TestCleanup_RemovesOldFiles(t *testing.T) {
 
 	// Create an "old" file by setting its mod time to 10 days ago
 	oldFile := filepath.Join(tmpDir, "old-backup.sql")
-	os.WriteFile(oldFile, []byte("old data"), 0644)
+	_ = os.WriteFile(oldFile, []byte("old data"), 0644)
 	oldTime := time.Now().AddDate(0, 0, -10)
-	os.Chtimes(oldFile, oldTime, oldTime)
+	_ = os.Chtimes(oldFile, oldTime, oldTime)
 
 	r := New(tmpDir, 7) // Keep 7 days
 	err := r.Cleanup()
@@ -52,7 +52,7 @@ func TestCleanup_KeepsNewFiles(t *testing.T) {
 
 	// Create a recent file (just created, so mod time is now)
 	newFile := filepath.Join(tmpDir, "new-backup.sql")
-	os.WriteFile(newFile, []byte("new data"), 0644)
+	_ = os.WriteFile(newFile, []byte("new data"), 0644)
 
 	r := New(tmpDir, 7)
 	err := r.Cleanup()
@@ -71,16 +71,16 @@ func TestCleanup_MixedFiles(t *testing.T) {
 
 	// Old file
 	oldFile := filepath.Join(tmpDir, "old.sql")
-	os.WriteFile(oldFile, []byte("old"), 0644)
+	_ = os.WriteFile(oldFile, []byte("old"), 0644)
 	oldTime := time.Now().AddDate(0, 0, -30)
-	os.Chtimes(oldFile, oldTime, oldTime)
+	_ = os.Chtimes(oldFile, oldTime, oldTime)
 
 	// New file
 	newFile := filepath.Join(tmpDir, "new.sql")
-	os.WriteFile(newFile, []byte("new"), 0644)
+	_ = os.WriteFile(newFile, []byte("new"), 0644)
 
 	r := New(tmpDir, 7)
-	r.Cleanup()
+	_ = r.Cleanup()
 
 	// Old should be gone
 	if _, err := os.Stat(oldFile); !os.IsNotExist(err) {
@@ -104,7 +104,7 @@ func TestCleanup_NegativeDays_DoesNothing(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	testFile := filepath.Join(tmpDir, "backup.sql")
-	os.WriteFile(testFile, []byte("data"), 0644)
+	_ = os.WriteFile(testFile, []byte("data"), 0644)
 
 	r := New(tmpDir, -1)
 	err := r.Cleanup()

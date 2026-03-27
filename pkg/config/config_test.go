@@ -12,7 +12,7 @@ import (
 func TestLoad_ValidSingleFile(t *testing.T) {
 	dir := t.TempDir()
 	configFile := filepath.Join(dir, "config.toml")
-	os.WriteFile(configFile, []byte(`
+	_ = os.WriteFile(configFile, []byte(`
 [[backup]]
 name = "test-backup"
 schedule = "0 0 * * * *"
@@ -54,7 +54,7 @@ func TestLoad_MissingFile(t *testing.T) {
 func TestLoad_InvalidTOML(t *testing.T) {
 	dir := t.TempDir()
 	configFile := filepath.Join(dir, "bad.toml")
-	os.WriteFile(configFile, []byte(`this is not valid toml [[[`), 0644)
+	_ = os.WriteFile(configFile, []byte(`this is not valid toml [[[`), 0644)
 
 	_, err := Load(configFile)
 	if err == nil {
@@ -65,7 +65,7 @@ func TestLoad_InvalidTOML(t *testing.T) {
 func TestLoad_DefaultLoggingValues(t *testing.T) {
 	dir := t.TempDir()
 	configFile := filepath.Join(dir, "config.toml")
-	os.WriteFile(configFile, []byte(`
+	_ = os.WriteFile(configFile, []byte(`
 [[backup]]
 name = "test"
 schedule = "0 0 * * * *"
@@ -96,7 +96,7 @@ path = "/tmp"
 func TestLoad_DefaultCompressType(t *testing.T) {
 	dir := t.TempDir()
 	configFile := filepath.Join(dir, "config.toml")
-	os.WriteFile(configFile, []byte(`
+	_ = os.WriteFile(configFile, []byte(`
 [[backup]]
 name = "test"
 schedule = "0 0 * * * *"
@@ -125,8 +125,8 @@ func TestLoad_ModularConfigWithIncludes(t *testing.T) {
 
 	// Create a sub-config file
 	subDir := filepath.Join(dir, "conf.d")
-	os.MkdirAll(subDir, 0755)
-	os.WriteFile(filepath.Join(subDir, "databases.toml"), []byte(`
+	_ = os.MkdirAll(subDir, 0755)
+	_ = os.WriteFile(filepath.Join(subDir, "databases.toml"), []byte(`
 [database.prod]
 type = "postgres"
 host = "prod-db.example.com"
@@ -137,7 +137,7 @@ username = "backup_user"
 
 	// Main config references the sub-config
 	mainConfig := filepath.Join(dir, "main.toml")
-	os.WriteFile(mainConfig, []byte(`
+	_ = os.WriteFile(mainConfig, []byte(`
 include = ["conf.d/databases.toml"]
 
 [[backup]]
@@ -164,23 +164,23 @@ func TestLoad_GlobPatternIncludes(t *testing.T) {
 	dir := t.TempDir()
 
 	subDir := filepath.Join(dir, "config.d")
-	os.MkdirAll(subDir, 0755)
+	_ = os.MkdirAll(subDir, 0755)
 
-	os.WriteFile(filepath.Join(subDir, "db.toml"), []byte(`
+	_ = os.WriteFile(filepath.Join(subDir, "db.toml"), []byte(`
 [database.mydb]
 type = "postgres"
 host = "localhost"
 database = "mydb"
 `), 0644)
 
-	os.WriteFile(filepath.Join(subDir, "upload.toml"), []byte(`
+	_ = os.WriteFile(filepath.Join(subDir, "upload.toml"), []byte(`
 [uploader.local]
 type = "local"
 path = "/tmp/backups"
 `), 0644)
 
 	mainConfig := filepath.Join(dir, "main.toml")
-	os.WriteFile(mainConfig, []byte(`
+	_ = os.WriteFile(mainConfig, []byte(`
 include = ["config.d/*.toml"]
 
 [[backup]]
@@ -208,15 +208,15 @@ func TestLoad_ConfigDDirectory(t *testing.T) {
 
 	// config.d/ is auto-discovered
 	configD := filepath.Join(dir, "config.d")
-	os.MkdirAll(configD, 0755)
+	_ = os.MkdirAll(configD, 0755)
 
-	os.WriteFile(filepath.Join(configD, "compressors.toml"), []byte(`
+	_ = os.WriteFile(filepath.Join(configD, "compressors.toml"), []byte(`
 [compressor.fast]
 type = "gzip"
 `), 0644)
 
 	mainConfig := filepath.Join(dir, "main.toml")
-	os.WriteFile(mainConfig, []byte(`
+	_ = os.WriteFile(mainConfig, []byte(`
 [[backup]]
 name = "test"
 schedule = "0 0 * * * *"
@@ -243,10 +243,10 @@ func TestLoad_ConfigMerging_LaterOverrides(t *testing.T) {
 	dir := t.TempDir()
 
 	configD := filepath.Join(dir, "config.d")
-	os.MkdirAll(configD, 0755)
+	_ = os.MkdirAll(configD, 0755)
 
 	// First file defines a database
-	os.WriteFile(filepath.Join(configD, "01-base.toml"), []byte(`
+	_ = os.WriteFile(filepath.Join(configD, "01-base.toml"), []byte(`
 [database.mydb]
 type = "postgres"
 host = "old-host"
@@ -254,7 +254,7 @@ database = "mydb"
 `), 0644)
 
 	// Second file overrides it
-	os.WriteFile(filepath.Join(configD, "02-override.toml"), []byte(`
+	_ = os.WriteFile(filepath.Join(configD, "02-override.toml"), []byte(`
 [database.mydb]
 type = "postgres"
 host = "new-host"
@@ -262,7 +262,7 @@ database = "mydb"
 `), 0644)
 
 	mainConfig := filepath.Join(dir, "main.toml")
-	os.WriteFile(mainConfig, []byte(`
+	_ = os.WriteFile(mainConfig, []byte(`
 [[backup]]
 name = "test"
 schedule = "0 0 * * * *"
@@ -838,7 +838,7 @@ func TestLoad_IncludeCycleDetection(t *testing.T) {
 	fileB := filepath.Join(dir, "b.toml")
 
 	// a.toml includes b.toml
-	os.WriteFile(fileA, []byte(`
+	_ = os.WriteFile(fileA, []byte(`
 include = ["b.toml"]
 
 [[backup]]
@@ -855,7 +855,7 @@ path = "/tmp"
 `), 0644)
 
 	// b.toml includes a.toml (cycle)
-	os.WriteFile(fileB, []byte(`
+	_ = os.WriteFile(fileB, []byte(`
 include = ["a.toml"]
 `), 0644)
 

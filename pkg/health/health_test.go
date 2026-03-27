@@ -150,7 +150,7 @@ func TestHandleHealth_NoBackups(t *testing.T) {
 
 	var status Status
 	body, _ := io.ReadAll(w.Result().Body)
-	json.Unmarshal(body, &status)
+	_ = json.Unmarshal(body, &status)
 
 	if status.Status != "ok" {
 		t.Errorf("Status = %q, want %q", status.Status, "ok")
