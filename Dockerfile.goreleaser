@@ -1,0 +1,22 @@
+FROM alpine:3.20
+
+RUN apk add --no-cache \
+    postgresql-client \
+    mysql-client \
+    ca-certificates \
+    tzdata
+
+RUN addgroup -g 1000 dumptruckd && \
+    adduser -D -u 1000 -G dumptruckd dumptruckd
+
+WORKDIR /app
+
+COPY dumptruckd /usr/local/bin/dumptruckd
+COPY config/example-single-file.toml /app/config/example.toml
+
+RUN mkdir -p /app/config && chown -R dumptruckd:dumptruckd /app
+
+USER dumptruckd
+
+ENTRYPOINT ["dumptruckd"]
+CMD ["-config", "/app/config/dumptruckd.toml"]

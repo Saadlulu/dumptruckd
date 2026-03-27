@@ -135,7 +135,9 @@ dockers:
     image_templates:
       - "ghcr.io/saadlulu/dumptruckd:{{ .Tag }}"
       - "ghcr.io/saadlulu/dumptruckd:latest"
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.goreleaser
+    extra_files:
+      - config/example-single-file.toml
     build_flag_templates:
       - "--pull"
       - "--label=org.opencontainers.image.created={{.Date}}"
