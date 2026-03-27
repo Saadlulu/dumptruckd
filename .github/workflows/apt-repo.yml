@@ -35,7 +35,11 @@ jobs:
       - name: Download release .deb files
         run: |
           mkdir -p apt-repo/pool/main
-          gh release download "${{ github.event.release.tag_name }}" \
+          TAG="${{ github.event.release.tag_name }}"
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName')
+          fi
+          gh release download "$TAG" \
             --pattern '*.deb' \
             --dir apt-repo/pool/main
         env:
@@ -83,4 +87,4 @@ jobs:
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages-action@v4
+        uses: actions/deploy-pages@v4
