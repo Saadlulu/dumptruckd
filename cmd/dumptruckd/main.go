@@ -107,7 +107,9 @@ func main() {
 	}
 
 	if healthServer != nil {
-		healthServer.Stop(context.Background())
+		if err := healthServer.Stop(context.Background()); err != nil {
+			slogger.Logger.Error("failed to stop health server", "error", err)
+		}
 	}
 
 	slogger.Logger.Info("dumptruckd stopped")

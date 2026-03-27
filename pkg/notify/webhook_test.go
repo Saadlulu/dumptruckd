@@ -39,7 +39,7 @@ func TestWebhookNotifier_Notify_SendsCorrectPayload(t *testing.T) {
 		}
 
 		decoder := json.NewDecoder(r.Body)
-		decoder.Decode(&receivedBody)
+		_ = decoder.Decode(&receivedBody)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()

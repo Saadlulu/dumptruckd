@@ -73,7 +73,7 @@ func TestLocalUploader_Upload_CopiesContent(t *testing.T) {
 	srcFile, _ := os.CreateTemp("", "upload-content-*.sql")
 	defer os.Remove(srcFile.Name())
 	content := "SELECT * FROM important_data;"
-	srcFile.WriteString(content)
+	_ = srcFile.WriteString(content)
 	srcFile.Close()
 
 	destPath, err := uploader.Upload(context.Background(), srcFile.Name(), "content-test")
@@ -107,7 +107,7 @@ func TestLocalUploader_Verify_ExistingFile(t *testing.T) {
 
 	// Create a file to verify
 	testFile := filepath.Join(baseDir, "test.sql")
-	os.WriteFile(testFile, []byte("data"), 0644)
+	_ = os.WriteFile(testFile, []byte("data"), 0644)
 
 	err := uploader.Verify(context.Background(), testFile)
 	if err != nil {
@@ -131,7 +131,7 @@ func TestLocalUploader_Delete_RemovesFile(t *testing.T) {
 
 	// Create a file to delete
 	testFile := filepath.Join(baseDir, "to-delete.sql")
-	os.WriteFile(testFile, []byte("data"), 0644)
+	_ = os.WriteFile(testFile, []byte("data"), 0644)
 
 	err := uploader.Delete(context.Background(), testFile)
 	if err != nil {

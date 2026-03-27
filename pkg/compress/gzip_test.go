@@ -52,7 +52,7 @@ func TestGzipCompressor_Compress_OutputIsValidGzip(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 
 	content := "test data to verify gzip validity"
-	tmpFile.WriteString(content)
+	_ = tmpFile.WriteString(content)
 	tmpFile.Close()
 
 	compressor := NewGzipCompressor()
