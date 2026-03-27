@@ -441,7 +441,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 			{
 				Name:     "test",
 				Schedule: "0 0 * * * *",
-				Database: DatabaseConfig{Type: "postgres"},
+				Database: DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db", Username: "user"},
 				Upload:   UploadConfig{Type: "local"},
 			},
 		},
@@ -554,7 +554,7 @@ func TestValidate_ValidPortZero(t *testing.T) {
 			{
 				Name:     "test",
 				Schedule: "0 0 * * * *",
-				Database: DatabaseConfig{Type: "postgres", Port: 0},
+				Database: DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db", Username: "user", Port: 0},
 				Upload:   UploadConfig{Type: "local"},
 				Compress: CompressConfig{Type: "gzip"},
 			},
@@ -572,7 +572,7 @@ func TestValidate_S3WithBucket(t *testing.T) {
 			{
 				Name:     "test",
 				Schedule: "0 0 * * * *",
-				Database: DatabaseConfig{Type: "postgres"},
+				Database: DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db", Username: "user"},
 				Upload:   UploadConfig{Type: "s3", S3: S3Config{Bucket: "my-bucket"}},
 				Compress: CompressConfig{Type: "gzip"},
 			},
@@ -581,5 +581,319 @@ func TestValidate_S3WithBucket(t *testing.T) {
 	err := cfg.Validate()
 	if err != nil {
 		t.Errorf("Validate() should pass for s3 with bucket, got %v", err)
+	}
+}
+
+func TestValidate_InvalidCronExpression(t *testing.T) {
+	tests := []struct {
+		name     string
+		schedule string
+		wantErr  bool
+	}{
+		{"valid 6-field cron", "0 0 2 * * *", false},
+		{"valid every minute", "0 * * * * *", false},
+		{"valid every 6 hours", "0 0 */6 * * *", false},
+		{"garbage", "not a cron", true},
+		{"empty", "", true},
+		{"5-field standard cron (auto-converted)", "0 2 * * *", false},
+		{"too many fields", "0 0 2 * * * *", true},
+		{"stars only no spaces", "******", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Backups: []BackupConfig{
+					{
+						Name:     "test",
+						Schedule: tt.schedule,
+						Database: DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db", Username: "user"},
+						Upload:   UploadConfig{Type: "local"},
+						Compress: CompressConfig{Type: "gzip"},
+					},
+				},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() with schedule %q: error = %v, wantErr %v", tt.schedule, err, tt.wantErr)
+			}
+			if tt.wantErr && err != nil && tt.schedule != "" {
+				if !strings.Contains(err.Error(), "schedule") {
+					t.Errorf("Error should mention 'schedule', got %q", err.Error())
+				}
+			}
+		})
+	}
+}
+
+func TestValidate_PostgresMissingHost(t *testing.T) {
+	cfg := &Config{
+		Backups: []BackupConfig{
+			{
+				Name:     "test",
+				Schedule: "0 0 * * * *",
+				Database: DatabaseConfig{Type: "postgres", Database: "db", Username: "user"},
+				Upload:   UploadConfig{Type: "local"},
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Validate() should error when postgres host is missing")
+	}
+	if !strings.Contains(err.Error(), "host is required") {
+		t.Errorf("Error should mention host, got %q", err.Error())
+	}
+}
+
+func TestValidate_PostgresMissingDatabase(t *testing.T) {
+	cfg := &Config{
+		Backups: []BackupConfig{
+			{
+				Name:     "test",
+				Schedule: "0 0 * * * *",
+				Database: DatabaseConfig{Type: "postgres", Host: "localhost", Username: "user"},
+				Upload:   UploadConfig{Type: "local"},
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Validate() should error when postgres database is missing")
+	}
+	if !strings.Contains(err.Error(), "database is required") {
+		t.Errorf("Error should mention database, got %q", err.Error())
+	}
+}
+
+func TestValidate_PostgresMissingUsername(t *testing.T) {
+	cfg := &Config{
+		Backups: []BackupConfig{
+			{
+				Name:     "test",
+				Schedule: "0 0 * * * *",
+				Database: DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db"},
+				Upload:   UploadConfig{Type: "local"},
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Validate() should error when postgres username is missing")
+	}
+	if !strings.Contains(err.Error(), "username is required") {
+		t.Errorf("Error should mention username, got %q", err.Error())
+	}
+}
+
+func TestValidate_MySQLMissingHost(t *testing.T) {
+	cfg := &Config{
+		Backups: []BackupConfig{
+			{
+				Name:     "test",
+				Schedule: "0 0 * * * *",
+				Database: DatabaseConfig{Type: "mysql", Database: "db", Username: "user"},
+				Upload:   UploadConfig{Type: "local"},
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Validate() should error when mysql host is missing")
+	}
+}
+
+func TestValidate_LocalUploadDefaultPath(t *testing.T) {
+	cfg := &Config{
+		Backups: []BackupConfig{
+			{
+				Name:     "test",
+				Schedule: "0 0 * * * *",
+				Database: DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db", Username: "user"},
+				Upload:   UploadConfig{Type: "local"},
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err != nil {
+		t.Errorf("Validate() should pass for local upload without path, got %v", err)
+	}
+}
+
+// --- Notify reference resolution tests ---
+
+func TestResolveReferences_ValidNotifyRef(t *testing.T) {
+	cfg := &Config{
+		Databases:   map[string]DatabaseConfig{"db": {Type: "postgres", Host: "localhost", Database: "mydb"}},
+		Compressors: make(map[string]CompressConfig),
+		Uploaders:   make(map[string]UploadConfig),
+		Retentions:  make(map[string]RetentionConfig),
+		Notifiers: map[string]NotifyConfig{
+			"slack-team": {Type: "slack", Slack: SlackConfig{WebhookURL: "https://hooks.slack.com/test"}},
+		},
+		Backups: []BackupConfig{
+			{
+				Name:      "test",
+				NotifyRef: "slack-team",
+				Database:  DatabaseConfig{Type: "postgres", Host: "localhost", Database: "mydb"},
+				Upload:    UploadConfig{Type: "local", Path: "/tmp"},
+			},
+		},
+	}
+
+	err := cfg.resolveReferences()
+	if err != nil {
+		t.Fatalf("resolveReferences() error = %v", err)
+	}
+	if cfg.Backups[0].Notify.Type != "slack" {
+		t.Errorf("Notify.Type = %q, want %q", cfg.Backups[0].Notify.Type, "slack")
+	}
+	if cfg.Backups[0].Notify.Slack.WebhookURL != "https://hooks.slack.com/test" {
+		t.Errorf("Notify.Slack.WebhookURL = %q, want %q", cfg.Backups[0].Notify.Slack.WebhookURL, "https://hooks.slack.com/test")
+	}
+}
+
+func TestResolveReferences_MissingNotifyRef(t *testing.T) {
+	cfg := &Config{
+		Databases:   map[string]DatabaseConfig{"db": {Type: "postgres"}},
+		Compressors: make(map[string]CompressConfig),
+		Uploaders:   make(map[string]UploadConfig),
+		Retentions:  make(map[string]RetentionConfig),
+		Notifiers:   make(map[string]NotifyConfig),
+		Backups: []BackupConfig{
+			{Name: "test", NotifyRef: "nonexistent"},
+		},
+	}
+
+	err := cfg.resolveReferences()
+	if err == nil {
+		t.Error("resolveReferences() should error for missing notify ref")
+	}
+	if !strings.Contains(err.Error(), "nonexistent") {
+		t.Errorf("Error should mention the missing ref name, got %q", err.Error())
+	}
+}
+
+// --- Notify type validation tests ---
+
+func TestValidate_UnknownNotifyType(t *testing.T) {
+	cfg := &Config{
+		Backups: []BackupConfig{
+			{
+				Name:     "test",
+				Schedule: "0 0 * * * *",
+				Database: DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db", Username: "user"},
+				Upload:   UploadConfig{Type: "local"},
+				Notify:   NotifyConfig{Type: "teams"},
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Validate() should error for unknown notify type")
+	}
+	if !strings.Contains(err.Error(), "unknown notify type") {
+		t.Errorf("Error should mention 'unknown notify type', got %q", err.Error())
+	}
+}
+
+func TestValidate_ValidNotifyTypes(t *testing.T) {
+	tests := []struct {
+		name       string
+		notifyType string
+	}{
+		{"slack", "slack"},
+		{"webhook", "webhook"},
+		{"none", "none"},
+		{"empty", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Backups: []BackupConfig{
+					{
+						Name:     "test",
+						Schedule: "0 0 * * * *",
+						Database: DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db", Username: "user"},
+						Upload:   UploadConfig{Type: "local"},
+						Notify:   NotifyConfig{Type: tt.notifyType},
+					},
+				},
+			}
+			err := cfg.Validate()
+			if err != nil {
+				t.Errorf("Validate() with notify type %q should pass, got %v", tt.notifyType, err)
+			}
+		})
+	}
+}
+
+// --- Include cycle detection test ---
+
+func TestLoad_IncludeCycleDetection(t *testing.T) {
+	dir := t.TempDir()
+
+	fileA := filepath.Join(dir, "a.toml")
+	fileB := filepath.Join(dir, "b.toml")
+
+	// a.toml includes b.toml
+	os.WriteFile(fileA, []byte(`
+include = ["b.toml"]
+
+[[backup]]
+name = "test"
+schedule = "0 0 * * * *"
+[backup.database]
+type = "postgres"
+host = "localhost"
+database = "db"
+username = "user"
+[backup.upload]
+type = "local"
+path = "/tmp"
+`), 0644)
+
+	// b.toml includes a.toml (cycle)
+	os.WriteFile(fileB, []byte(`
+include = ["a.toml"]
+`), 0644)
+
+	cfg, err := Load(fileA)
+	if err != nil {
+		t.Fatalf("Load() should handle include cycles gracefully, got error: %v", err)
+	}
+	if len(cfg.Backups) != 1 {
+		t.Errorf("Expected 1 backup, got %d", len(cfg.Backups))
+	}
+}
+
+// --- Backup name sanitization test ---
+
+func TestResolveReferences_BackupNameSanitized(t *testing.T) {
+	cfg := &Config{
+		Databases:   make(map[string]DatabaseConfig),
+		Compressors: make(map[string]CompressConfig),
+		Uploaders:   make(map[string]UploadConfig),
+		Retentions:  make(map[string]RetentionConfig),
+		Notifiers:   make(map[string]NotifyConfig),
+		Backups: []BackupConfig{
+			{
+				Name:     "../../evil",
+				Database: DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db"},
+				Upload:   UploadConfig{Type: "local", Path: "/tmp"},
+			},
+		},
+	}
+
+	err := cfg.resolveReferences()
+	if err != nil {
+		t.Fatalf("resolveReferences() error = %v", err)
+	}
+	if strings.Contains(cfg.Backups[0].Name, "/") {
+		t.Errorf("Backup name should not contain '/', got %q", cfg.Backups[0].Name)
+	}
+	if cfg.Backups[0].Name == "../../evil" {
+		t.Errorf("Backup name should be sanitized, got %q", cfg.Backups[0].Name)
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
 func TestNew_DefaultConfig(t *testing.T) {

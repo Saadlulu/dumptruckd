@@ -5,16 +5,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
 func TestNewUploader(t *testing.T) {
 	tests := []struct {
-		name    string
-		cfg     config.UploadConfig
-		envVars map[string]string
-		wantErr bool
-		errMsg  string
+		name       string
+		cfg        config.UploadConfig
+		envVars    map[string]string
+		clearCreds bool
+		wantErr    bool
+		errMsg     string
 	}{
 		{
 			name:    "local with path",
@@ -40,13 +41,14 @@ func TestNewUploader(t *testing.T) {
 			errMsg:  "bucket is required",
 		},
 		{
-			name: "s3 missing env vars",
+			name: "s3 missing credentials",
 			cfg: config.UploadConfig{
 				Type: "s3",
 				S3:   config.S3Config{Bucket: "test-bucket"},
 			},
-			wantErr: true,
-			errMsg:  "environment variables are required",
+			clearCreds: true,
+			wantErr:    true,
+			errMsg:     "credentials",
 		},
 		{
 			name:    "gcp not implemented",
@@ -79,6 +81,13 @@ func TestNewUploader(t *testing.T) {
 			if tt.envVars == nil {
 				os.Unsetenv("AWS_ACCESS_KEY_ID")
 				os.Unsetenv("AWS_SECRET_ACCESS_KEY")
+			}
+			// Force no credentials from any source
+			if tt.clearCreds {
+				os.Unsetenv("AWS_ACCESS_KEY_ID")
+				os.Unsetenv("AWS_SECRET_ACCESS_KEY")
+				t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
+				t.Setenv("AWS_CONFIG_FILE", "/dev/null")
 			}
 
 			_, err := NewUploader(tt.cfg)

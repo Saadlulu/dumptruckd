@@ -7,11 +7,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
-	"github.com/dumptruckd/dumptruckd/pkg/compress"
-	"github.com/dumptruckd/dumptruckd/pkg/dump"
-	"github.com/dumptruckd/dumptruckd/pkg/notify"
-	"github.com/dumptruckd/dumptruckd/pkg/upload"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/compress"
+	"github.com/Saadlulu/dumptruckd/pkg/dump"
+	"github.com/Saadlulu/dumptruckd/pkg/notify"
+	"github.com/Saadlulu/dumptruckd/pkg/upload"
 )
 
 // Tester validates configuration by testing each component end-to-end.
@@ -171,7 +171,7 @@ func (t *Tester) testCompressor(compCfg config.CompressConfig) error {
 		return fmt.Errorf("create compressor: %w", err)
 	}
 
-	compressedFile, err := compressor.Compress(testFile.Name())
+	compressedFile, err := compressor.Compress(context.Background(), testFile.Name())
 	if err != nil {
 		return fmt.Errorf("compress failed: %w", err)
 	}
@@ -298,7 +298,7 @@ func (t *Tester) testNotifier(notifyCfg config.NotifyConfig) error {
 	testMsg := fmt.Sprintf("🧪 dumptruckd test notification\nTime: %s\nThis is a test message to verify notification configuration.", 
 		time.Now().Format(time.RFC3339))
 	
-	if err := notifier.Notify(testMsg); err != nil {
+	if err := notifier.Notify(context.Background(), testMsg); err != nil {
 		return fmt.Errorf("send notification failed: %w", err)
 	}
 
@@ -378,7 +378,7 @@ func (t *Tester) testFullPipeline(ctx context.Context, backupCfg config.BackupCo
 		return fmt.Errorf("create compressor: %w", err)
 	}
 
-	compressedFile, err := compressor.Compress(dumpFile)
+	compressedFile, err := compressor.Compress(ctx, dumpFile)
 	if err != nil {
 		return fmt.Errorf("compress failed: %w", err)
 	}

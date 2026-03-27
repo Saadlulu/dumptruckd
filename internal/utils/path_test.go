@@ -3,47 +3,69 @@ package utils
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
 
-func TestSanitizePath_StripsDotDot(t *testing.T) {
-	got := SanitizePath("../../etc/passwd")
-	if strings.Contains(got, "..") {
-		t.Errorf("SanitizePath() should strip '..', got %q", got)
+func TestSanitizePath_RejectsDotDot(t *testing.T) {
+	t.Parallel()
+	_, err := SanitizePath("../../etc/passwd")
+	if err == nil {
+		t.Error("SanitizePath() should return error for path with '..'")
 	}
 }
 
-func TestSanitizePath_StripsTilde(t *testing.T) {
-	got := SanitizePath("~/secret/file")
-	if strings.Contains(got, "~") {
-		t.Errorf("SanitizePath() should strip '~', got %q", got)
+func TestSanitizePath_RejectsTilde(t *testing.T) {
+	t.Parallel()
+	_, err := SanitizePath("~/secret/file")
+	if err == nil {
+		t.Error("SanitizePath() should return error for path with '~'")
 	}
 }
 
 func TestSanitizePath_AbsolutePathStaysAbsolute(t *testing.T) {
-	got := SanitizePath("/var/backups/dump.sql")
+	t.Parallel()
+	got, err := SanitizePath("/var/backups/dump.sql")
+	if err != nil {
+		t.Fatalf("SanitizePath() unexpected error: %v", err)
+	}
 	if !filepath.IsAbs(got) {
 		t.Errorf("SanitizePath() should keep absolute paths absolute, got %q", got)
 	}
 }
 
 func TestSanitizePath_RelativePathStaysRelative(t *testing.T) {
-	got := SanitizePath("backups/dump.sql")
+	t.Parallel()
+	got, err := SanitizePath("backups/dump.sql")
+	if err != nil {
+		t.Fatalf("SanitizePath() unexpected error: %v", err)
+	}
 	if filepath.IsAbs(got) {
 		t.Errorf("SanitizePath() should keep relative paths relative, got %q", got)
 	}
 }
 
 func TestSanitizePath_CleanPath(t *testing.T) {
-	got := SanitizePath("backups//dump.sql")
-	if strings.Contains(got, "//") {
+	t.Parallel()
+	got, err := SanitizePath("backups//dump.sql")
+	if err != nil {
+		t.Fatalf("SanitizePath() unexpected error: %v", err)
+	}
+	if got != filepath.Join("backups", "dump.sql") {
 		t.Errorf("SanitizePath() should clean double slashes, got %q", got)
 	}
 }
 
+func TestSanitizePath_RejectsNestedTraversal(t *testing.T) {
+	t.Parallel()
+	_, err := SanitizePath("backups/../../etc/passwd")
+	if err == nil {
+		t.Error("SanitizePath() should return error for nested traversal")
+	}
+}
+
 func TestEnsureDir_CreatesNestedDirectories(t *testing.T) {
+	t.Parallel()
 	tmpDir := t.TempDir()
 	nested := filepath.Join(tmpDir, "a", "b", "c")
 
@@ -62,6 +84,7 @@ func TestEnsureDir_CreatesNestedDirectories(t *testing.T) {
 }
 
 func TestEnsureDir_ExistingDirIsNoOp(t *testing.T) {
+	t.Parallel()
 	tmpDir := t.TempDir()
 
 	err := EnsureDir(tmpDir)
@@ -71,12 +94,14 @@ func TestEnsureDir_ExistingDirIsNoOp(t *testing.T) {
 }
 
 func TestBuildBackupPath_WithPrefix(t *testing.T) {
-	// Override Now for deterministic test
 	origNow := Now
 	Now = func() time.Time { return time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC) }
 	defer func() { Now = origNow }()
 
-	got := BuildBackupPath("backups", "mydb", "dump.sql.gz")
+	got, err := BuildBackupPath("backups", "mydb", "dump.sql.gz")
+	if err != nil {
+		t.Fatalf("BuildBackupPath() unexpected error: %v", err)
+	}
 	want := filepath.Join("backups", "mydb", "2024/06/15", "dump.sql.gz")
 	if got != want {
 		t.Errorf("BuildBackupPath() = %q, want %q", got, want)
@@ -88,9 +113,20 @@ func TestBuildBackupPath_WithoutPrefix(t *testing.T) {
 	Now = func() time.Time { return time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC) }
 	defer func() { Now = origNow }()
 
-	got := BuildBackupPath("", "mydb", "dump.sql.gz")
+	got, err := BuildBackupPath("", "mydb", "dump.sql.gz")
+	if err != nil {
+		t.Fatalf("BuildBackupPath() unexpected error: %v", err)
+	}
 	want := filepath.Join("mydb", "2024/06/15", "dump.sql.gz")
 	if got != want {
 		t.Errorf("BuildBackupPath() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildBackupPath_RejectsTraversal(t *testing.T) {
+	t.Parallel()
+	_, err := BuildBackupPath("", "../evil", "dump.sql")
+	if err == nil {
+		t.Error("BuildBackupPath() should return error for traversal in backup name")
 	}
 }

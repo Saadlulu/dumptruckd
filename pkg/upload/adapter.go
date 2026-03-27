@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
 // Uploader interface for upload adapters.

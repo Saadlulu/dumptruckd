@@ -1,6 +1,6 @@
 [Unit]
 Description=dumptruckd - Database Backup Daemon
-Documentation=https://github.com/dumptruckd/dumptruckd
+Documentation=https://github.com/Saadlulu/dumptruckd
 After=network.target postgresql.service mysql.service
 
 [Service]

@@ -23,6 +23,27 @@ warn()  { echo -e "${YELLOW}⚠${NC} $1"; }
 fail()  { echo -e "${RED}✗${NC} $1"; exit 1; }
 ask()   { echo -en "${CYAN}?${NC} $1: "; }
 
+# Read password with star masking
+read_password() {
+    local password=""
+    local char=""
+    while IFS= read -r -s -n 1 char; do
+        if [[ $char == "" ]]; then
+            break
+        elif [[ $char == $'\x7f' || $char == $'\b' ]]; then
+            if [ ${#password} -gt 0 ]; then
+                password="${password%?}"
+                echo -en "\b \b"
+            fi
+        else
+            password+="$char"
+            echo -en "*"
+        fi
+    done
+    echo ""
+    printf -v "$1" '%s' "$password"
+}
+
 echo ""
 echo "========================================="
 echo "  dumptruckd installer"
@@ -62,39 +83,44 @@ else
 fi
 
 if [[ "${REINSTALL:-y}" =~ ^[Yy]$ ]]; then
-    info "Installing dumptruckd to ${INSTALL_DIR}..."
-
-    if [ "$VERSION" = "latest" ]; then
-        DOWNLOAD_URL="https://github.com/dumptruckd/dumptruckd/releases/latest/download/dumptruckd_${OS}_${ARCH}.tar.gz"
+    # Check if binary already exists and works
+    if command -v dumptruckd &>/dev/null; then
+        ok "Using existing dumptruckd binary"
     else
-        DOWNLOAD_URL="https://github.com/dumptruckd/dumptruckd/releases/download/${VERSION}/dumptruckd_${VERSION}_${OS}_${ARCH}.tar.gz"
-    fi
+        info "Installing dumptruckd to ${INSTALL_DIR}..."
 
-    TMP_DIR=$(mktemp -d)
-    trap "rm -rf $TMP_DIR" EXIT
-
-    if command -v curl &>/dev/null; then
-        curl -sSL "$DOWNLOAD_URL" -o "$TMP_DIR/dumptruckd.tar.gz" 2>/dev/null || true
-    elif command -v wget &>/dev/null; then
-        wget -q "$DOWNLOAD_URL" -O "$TMP_DIR/dumptruckd.tar.gz" 2>/dev/null || true
-    fi
-
-    if [ -f "$TMP_DIR/dumptruckd.tar.gz" ] && [ -s "$TMP_DIR/dumptruckd.tar.gz" ]; then
-        tar -xzf "$TMP_DIR/dumptruckd.tar.gz" -C "$TMP_DIR" 2>/dev/null || true
-    fi
-
-    if [ -f "$TMP_DIR/dumptruckd" ]; then
-        mv "$TMP_DIR/dumptruckd" "$INSTALL_DIR/dumptruckd"
-        chmod +x "$INSTALL_DIR/dumptruckd"
-        ok "Binary installed"
-    else
-        warn "Could not download release binary. Trying to build from source..."
-        if command -v go &>/dev/null; then
-            go install github.com/dumptruckd/dumptruckd/cmd/dumptruckd@latest
-            cp "$(go env GOPATH)/bin/dumptruckd" "$INSTALL_DIR/dumptruckd"
-            ok "Built from source"
+        if [ "$VERSION" = "latest" ]; then
+            DOWNLOAD_URL="https://github.com/Saadlulu/dumptruckd/releases/latest/download/dumptruckd_${OS}_${ARCH}.tar.gz"
         else
-            fail "Go is not installed. Install Go first or download a release binary manually."
+            DOWNLOAD_URL="https://github.com/Saadlulu/dumptruckd/releases/download/${VERSION}/dumptruckd_${VERSION}_${OS}_${ARCH}.tar.gz"
+        fi
+
+        TMP_DIR=$(mktemp -d)
+        trap "rm -rf $TMP_DIR" EXIT
+
+        if command -v curl &>/dev/null; then
+            curl -sSL "$DOWNLOAD_URL" -o "$TMP_DIR/dumptruckd.tar.gz" 2>/dev/null || true
+        elif command -v wget &>/dev/null; then
+            wget -q "$DOWNLOAD_URL" -O "$TMP_DIR/dumptruckd.tar.gz" 2>/dev/null || true
+        fi
+
+        if [ -f "$TMP_DIR/dumptruckd.tar.gz" ] && [ -s "$TMP_DIR/dumptruckd.tar.gz" ]; then
+            tar -xzf "$TMP_DIR/dumptruckd.tar.gz" -C "$TMP_DIR" 2>/dev/null || true
+        fi
+
+        if [ -f "$TMP_DIR/dumptruckd" ]; then
+            mv "$TMP_DIR/dumptruckd" "$INSTALL_DIR/dumptruckd"
+            chmod +x "$INSTALL_DIR/dumptruckd"
+            ok "Binary installed"
+        else
+            warn "Could not download release binary. Trying to build from source..."
+            if command -v go &>/dev/null; then
+                go install github.com/Saadlulu/dumptruckd/cmd/dumptruckd@latest
+                cp "$(go env GOPATH)/bin/dumptruckd" "$INSTALL_DIR/dumptruckd"
+                ok "Built from source"
+            else
+                fail "Go is not installed. Install Go first or download a release binary manually."
+            fi
         fi
     fi
 fi
@@ -150,13 +176,11 @@ while [ -z "$DB_USER" ]; do
 done
 
 ask "Database password"
-read -rs DB_PASS
-echo ""
+read_password DB_PASS
 while [ -z "$DB_PASS" ]; do
     warn "Password is required"
     ask "Database password"
-    read -rs DB_PASS
-    echo ""
+    read_password DB_PASS
 done
 
 ok "Database connection configured"
@@ -204,8 +228,7 @@ case "$UPLOAD_CHOICE" in
         ask "AWS Access Key ID"
         read -r AWS_KEY
         ask "AWS Secret Access Key"
-        read -rs AWS_SECRET
-        echo ""
+        read_password AWS_SECRET
 
         ok "S3 upload configured"
         ;;
@@ -230,15 +253,15 @@ ask "Choose [1-5]"
 read -r SCHED_CHOICE
 
 case "$SCHED_CHOICE" in
-    1) SCHEDULE="0 0 */6 * * *"; SCHED_DESC="every 6 hours" ;;
-    3) SCHEDULE="0 0 0 * * *"; SCHED_DESC="daily at midnight" ;;
-    4) SCHEDULE="0 0 2 * * 0"; SCHED_DESC="weekly Sunday 2am" ;;
+    1) SCHEDULE="0 */6 * * *"; SCHED_DESC="every 6 hours" ;;
+    3) SCHEDULE="0 0 * * *"; SCHED_DESC="daily at midnight" ;;
+    4) SCHEDULE="0 2 * * 0"; SCHED_DESC="weekly Sunday 2am" ;;
     5)
-        ask "Cron expression (6 fields, with seconds)"
+        ask "Cron expression (e.g. 0 2 * * * for daily at 2am)"
         read -r SCHEDULE
         SCHED_DESC="custom"
         ;;
-    *) SCHEDULE="0 0 2 * * *"; SCHED_DESC="daily at 2am" ;;
+    *) SCHEDULE="0 2 * * *"; SCHED_DESC="daily at 2am" ;;
 esac
 ok "Schedule: $SCHED_DESC ($SCHEDULE)"
 
@@ -370,7 +393,7 @@ TOMLEOF
 if [ "$NOTIFY_TYPE" = "slack" ]; then
     cat >> "${CONFIG_DIR}/dumptruckd.toml" << TOMLEOF
   [backup.notify.slack]
-  webhook_url = "${SLACK_URL}"
+  # webhook_url loaded from SLACK_WEBHOOK_URL env var in .env
 TOMLEOF
 elif [ "$NOTIFY_TYPE" = "webhook" ]; then
     cat >> "${CONFIG_DIR}/dumptruckd.toml" << TOMLEOF
@@ -393,6 +416,12 @@ AWS_SECRET_ACCESS_KEY=${AWS_SECRET}
 ENVEOF
 fi
 
+if [ "$NOTIFY_TYPE" = "slack" ] && [ -n "$SLACK_URL" ]; then
+    cat >> "${CONFIG_DIR}/.env" << ENVEOF
+SLACK_WEBHOOK_URL=${SLACK_URL}
+ENVEOF
+fi
+
 chmod 600 "${CONFIG_DIR}/.env"
 ok "Credentials written to ${CONFIG_DIR}/.env (mode 600)"
 
@@ -402,15 +431,20 @@ ask "Install systemd service? [Y/n]"
 read -r INSTALL_SERVICE
 
 if [[ ! "$INSTALL_SERVICE" =~ ^[Nn]$ ]]; then
-    # Create service user
-    if ! id -u dumptruckd &>/dev/null; then
-        useradd --system --no-create-home --shell /usr/sbin/nologin dumptruckd 2>/dev/null || true
-    fi
+    if ! command -v systemctl &>/dev/null; then
+        warn "systemd not available (container or non-systemd OS)"
+        info "You can run dumptruckd manually:"
+        echo "  source ${CONFIG_DIR}/.env && dumptruckd -config ${CONFIG_DIR}/dumptruckd.toml"
+    else
+        # Create service user
+        if ! id -u dumptruckd &>/dev/null; then
+            useradd --system --no-create-home --shell /usr/sbin/nologin dumptruckd 2>/dev/null || true
+        fi
 
-    chown -R dumptruckd:dumptruckd "$CONFIG_DIR" 2>/dev/null || true
-    chown -R dumptruckd:dumptruckd "$DATA_DIR" 2>/dev/null || true
+        chown -R dumptruckd:dumptruckd "$CONFIG_DIR" 2>/dev/null || true
+        chown -R dumptruckd:dumptruckd "$DATA_DIR" 2>/dev/null || true
 
-    cat > /etc/systemd/system/dumptruckd.service << SVCEOF
+        cat > /etc/systemd/system/dumptruckd.service << SVCEOF
 [Unit]
 Description=dumptruckd - Database Backup Daemon
 After=network.target postgresql.service mysql.service
@@ -428,15 +462,16 @@ RestartSec=10
 WantedBy=multi-user.target
 SVCEOF
 
-    systemctl daemon-reload
-    ok "Systemd service installed"
+        systemctl daemon-reload
+        ok "Systemd service installed"
 
-    ask "Start dumptruckd now? [Y/n]"
-    read -r START_NOW
-    if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
-        systemctl enable dumptruckd
-        systemctl start dumptruckd
-        ok "dumptruckd is running"
+        ask "Start dumptruckd now? [Y/n]"
+        read -r START_NOW
+        if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
+            systemctl enable dumptruckd
+            systemctl start dumptruckd
+            ok "dumptruckd is running"
+        fi
     fi
 else
     info "Skipping systemd setup"

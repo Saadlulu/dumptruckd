@@ -78,11 +78,13 @@ cp config/example-single-file.toml config/dumptruckd.toml
 ## Default Behavior
 
 If you don't specify `-config`, dumptruckd looks for:
-```
-config/dumptruckd.toml
-```
+1. `/etc/dumptruckd/dumptruckd.toml`
+2. `config/dumptruckd.toml`
+3. `dumptruckd.toml`
 
 You can override with:
 ```bash
 dumptruckd -config /path/to/your/config.toml
 ```
+
+See [../docs/CONFIGURATION.md](../docs/CONFIGURATION.md) for the full configuration guide.

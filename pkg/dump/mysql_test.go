@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
 func TestNewMySQLDumper_MissingHost(t *testing.T) {

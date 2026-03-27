@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
 func TestNewS3Uploader_MissingBucket(t *testing.T) {
@@ -22,10 +22,13 @@ func TestNewS3Uploader_MissingBucket(t *testing.T) {
 func TestNewS3Uploader_MissingEnvVars(t *testing.T) {
 	os.Unsetenv("AWS_ACCESS_KEY_ID")
 	os.Unsetenv("AWS_SECRET_ACCESS_KEY")
+	// Prevent the SDK from finding credentials via shared credentials file or config
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
+	t.Setenv("AWS_CONFIG_FILE", "/dev/null")
 
 	_, err := NewS3Uploader(config.S3Config{Bucket: "test-bucket"})
 	if err == nil {
-		t.Error("NewS3Uploader() should error when AWS env vars are missing")
+		t.Error("NewS3Uploader() should error when no AWS credentials are available")
 	}
 }
 

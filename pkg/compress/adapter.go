@@ -1,14 +1,16 @@
 package compress
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
-// Compressor interface for compression adapters
+// Compressor interface for compression adapters.
+// Accepts a context so compression can be cancelled during graceful shutdown.
 type Compressor interface {
-	Compress(inputPath string) (string, error) // Returns path to compressed file
+	Compress(ctx context.Context, inputPath string) (string, error) // Returns path to compressed file
 }
 
 // NewCompressor creates a compressor based on config

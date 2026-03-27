@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make
@@ -25,11 +25,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.version=${VERSION} -X ma
     -o /bin/dumptruckd ./cmd/dumptruckd
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.20
 
 # Install postgresql-client for pg_dump (and other tools as needed)
 RUN apk add --no-cache \
     postgresql-client \
+    mysql-client \
     ca-certificates \
     tzdata
 
@@ -43,7 +44,7 @@ WORKDIR /app
 COPY --from=builder /bin/dumptruckd /usr/local/bin/dumptruckd
 
 # Copy example config
-COPY config/example.toml /app/config/example.toml
+COPY config/example-single-file.toml /app/config/example.toml
 
 # Create config directory
 RUN mkdir -p /app/config && chown -R dumptruckd:dumptruckd /app

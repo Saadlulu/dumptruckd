@@ -7,14 +7,29 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
-// New creates a configured *slog.Logger from LoggingConfig.
-func New(cfg config.LoggingConfig) (*slog.Logger, error) {
+// Logger wraps slog.Logger and holds a reference to the log file (if any) for cleanup.
+type Logger struct {
+	*slog.Logger
+	closer io.Closer // nil when output is stdout/stderr
+}
+
+// Close releases the underlying log file, if any.
+func (l *Logger) Close() error {
+	if l.closer != nil {
+		return l.closer.Close()
+	}
+	return nil
+}
+
+// New creates a configured Logger from LoggingConfig.
+// The caller should call Close() on shutdown to release file handles.
+func New(cfg config.LoggingConfig) (*Logger, error) {
 	level := parseLevel(cfg.Level)
 
-	writer, err := getWriter(cfg.Output)
+	writer, closer, err := getWriter(cfg.Output)
 	if err != nil {
 		return nil, fmt.Errorf("configure log output: %w", err)
 	}
@@ -29,7 +44,10 @@ func New(cfg config.LoggingConfig) (*slog.Logger, error) {
 		handler = slog.NewTextHandler(writer, opts)
 	}
 
-	return slog.New(handler), nil
+	return &Logger{
+		Logger: slog.New(handler),
+		closer: closer,
+	}, nil
 }
 
 func parseLevel(level string) slog.Level {
@@ -45,17 +63,18 @@ func parseLevel(level string) slog.Level {
 	}
 }
 
-func getWriter(output string) (io.Writer, error) {
+// getWriter returns the writer and an optional closer (non-nil only for file output).
+func getWriter(output string) (io.Writer, io.Closer, error) {
 	switch strings.ToLower(output) {
 	case "", "stdout":
-		return os.Stdout, nil
+		return os.Stdout, nil, nil
 	case "stderr":
-		return os.Stderr, nil
+		return os.Stderr, nil, nil
 	default:
-		f, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		f, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
 		if err != nil {
-			return nil, fmt.Errorf("open log file %s: %w", output, err)
+			return nil, nil, fmt.Errorf("open log file %s: %w", output, err)
 		}
-		return f, nil
+		return f, f, nil
 	}
 }

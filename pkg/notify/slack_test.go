@@ -1,13 +1,14 @@
 package notify
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
 func TestNewSlackNotifier_WithConfigURL(t *testing.T) {
@@ -47,7 +48,7 @@ func TestNewSlackNotifier_MissingURL(t *testing.T) {
 func TestSlackNotifier_Notify_SendsCorrectPayload(t *testing.T) {
 	var receivedBody map[string]string
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("Expected POST, got %s", r.Method)
 		}
@@ -66,7 +67,7 @@ func TestSlackNotifier_Notify_SendsCorrectPayload(t *testing.T) {
 		client:     server.Client(),
 	}
 
-	err := notifier.Notify("test message")
+	err := notifier.Notify(context.Background(), "test message")
 	if err != nil {
 		t.Fatalf("Notify() error = %v", err)
 	}
@@ -77,7 +78,7 @@ func TestSlackNotifier_Notify_SendsCorrectPayload(t *testing.T) {
 }
 
 func TestSlackNotifier_Notify_HandlesNon200(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
@@ -87,7 +88,7 @@ func TestSlackNotifier_Notify_HandlesNon200(t *testing.T) {
 		client:     server.Client(),
 	}
 
-	err := notifier.Notify("test message")
+	err := notifier.Notify(context.Background(), "test message")
 	if err == nil {
 		t.Error("Notify() should error on non-200 response")
 	}
@@ -95,12 +96,26 @@ func TestSlackNotifier_Notify_HandlesNon200(t *testing.T) {
 
 func TestSlackNotifier_Notify_HandlesConnectionError(t *testing.T) {
 	notifier := &SlackNotifier{
-		webhookURL: "http://localhost:1", // nothing listening
+		webhookURL: "https://localhost:1", // nothing listening
 		client:     http.DefaultClient,
 	}
 
-	err := notifier.Notify("test message")
+	err := notifier.Notify(context.Background(), "test message")
 	if err == nil {
 		t.Error("Notify() should error on connection failure")
+	}
+}
+
+func TestNewSlackNotifier_RejectsHTTP(t *testing.T) {
+	_, err := NewSlackNotifier(config.SlackConfig{WebhookURL: "http://hooks.slack.com/test"})
+	if err == nil {
+		t.Error("NewSlackNotifier() should reject http:// URLs (must be https)")
+	}
+}
+
+func TestNewSlackNotifier_RejectsFileScheme(t *testing.T) {
+	_, err := NewSlackNotifier(config.SlackConfig{WebhookURL: "file:///etc/passwd"})
+	if err == nil {
+		t.Error("NewSlackNotifier() should reject file:// URLs")
 	}
 }

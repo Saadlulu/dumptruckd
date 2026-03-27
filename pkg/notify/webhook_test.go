@@ -1,12 +1,13 @@
 package notify
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
 func TestNewWebhookNotifier_WithURL(t *testing.T) {
@@ -48,7 +49,7 @@ func TestWebhookNotifier_Notify_SendsCorrectPayload(t *testing.T) {
 		client: server.Client(),
 	}
 
-	err := notifier.Notify("backup completed")
+	err := notifier.Notify(context.Background(), "backup completed")
 	if err != nil {
 		t.Fatalf("Notify() error = %v", err)
 	}
@@ -72,7 +73,7 @@ func TestWebhookNotifier_Notify_HandlesServerError(t *testing.T) {
 		client: server.Client(),
 	}
 
-	err := notifier.Notify("test")
+	err := notifier.Notify(context.Background(), "test")
 	if err == nil {
 		t.Error("Notify() should error on server error response")
 	}
@@ -84,8 +85,22 @@ func TestWebhookNotifier_Notify_HandlesConnectionError(t *testing.T) {
 		client: http.DefaultClient,
 	}
 
-	err := notifier.Notify("test")
+	err := notifier.Notify(context.Background(), "test")
 	if err == nil {
 		t.Error("Notify() should error on connection failure")
+	}
+}
+
+func TestNewWebhookNotifier_RejectsFileScheme(t *testing.T) {
+	_, err := NewWebhookNotifier(config.WebhookConfig{URL: "file:///etc/passwd"})
+	if err == nil {
+		t.Error("NewWebhookNotifier() should reject file:// URLs")
+	}
+}
+
+func TestNewWebhookNotifier_RejectsFTPScheme(t *testing.T) {
+	_, err := NewWebhookNotifier(config.WebhookConfig{URL: "ftp://example.com/data"})
+	if err == nil {
+		t.Error("NewWebhookNotifier() should reject ftp:// URLs")
 	}
 }

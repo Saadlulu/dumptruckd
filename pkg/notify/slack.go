@@ -2,13 +2,15 @@ package notify
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
 // SlackNotifier sends notifications via Slack incoming webhooks.
@@ -26,6 +28,9 @@ func NewSlackNotifier(cfg config.SlackConfig) (*SlackNotifier, error) {
 	if webhookURL == "" {
 		return nil, fmt.Errorf("slack webhook URL is required (config or SLACK_WEBHOOK_URL env var)")
 	}
+	if !strings.HasPrefix(webhookURL, "https://") {
+		return nil, fmt.Errorf("slack webhook URL must use https://")
+	}
 
 	return &SlackNotifier{
 		webhookURL: webhookURL,
@@ -35,7 +40,7 @@ func NewSlackNotifier(cfg config.SlackConfig) (*SlackNotifier, error) {
 	}, nil
 }
 
-func (n *SlackNotifier) Notify(message string) error {
+func (n *SlackNotifier) Notify(ctx context.Context, message string) error {
 	payload := map[string]string{
 		"text": message,
 	}
@@ -45,7 +50,7 @@ func (n *SlackNotifier) Notify(message string) error {
 		return fmt.Errorf("marshal payload: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", n.webhookURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", n.webhookURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

@@ -1,0 +1,86 @@
+name: Update APT Repository
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  update-apt-repo:
+    name: Update APT Repository
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install apt repo tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev gpg
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.APT_GPG_PRIVATE_KEY }}" | gpg --batch --import
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+
+      - name: Download release .deb files
+        run: |
+          mkdir -p apt-repo/pool/main
+          gh release download "${{ github.event.release.tag_name }}" \
+            --pattern '*.deb' \
+            --dir apt-repo/pool/main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate APT repository metadata
+        run: |
+          cd apt-repo
+          mkdir -p dists/stable/main/binary-amd64
+          mkdir -p dists/stable/main/binary-arm64
+
+          dpkg-scanpackages --arch amd64 pool/ > dists/stable/main/binary-amd64/Packages
+          gzip -k dists/stable/main/binary-amd64/Packages
+
+          dpkg-scanpackages --arch arm64 pool/ > dists/stable/main/binary-arm64/Packages
+          gzip -k dists/stable/main/binary-arm64/Packages
+
+          # Generate Release file
+          cd dists/stable
+          cat > Release << EOF
+          Origin: dumptruckd
+          Label: dumptruckd
+          Suite: stable
+          Codename: stable
+          Architectures: amd64 arm64
+          Components: main
+          Description: dumptruckd - A modular database backup daemon
+          EOF
+
+          # Add checksums
+          apt-ftparchive release . >> Release
+
+          # Sign
+          gpg --batch --yes --armor --detach-sign --output Release.gpg Release
+          gpg --batch --yes --clearsign --output InRelease Release
+
+      - name: Export public key
+        run: |
+          gpg --armor --export > apt-repo/dumptruckd.gpg.key
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apt-repo
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages-action@v4

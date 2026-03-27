@@ -2,6 +2,7 @@ package compress
 
 import (
 	"compress/gzip"
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -22,7 +23,7 @@ func TestGzipCompressor_Compress_ValidFile(t *testing.T) {
 	tmpFile.Close()
 
 	compressor := NewGzipCompressor()
-	outputPath, err := compressor.Compress(tmpFile.Name())
+	outputPath, err := compressor.Compress(context.Background(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Compress() error = %v", err)
 	}
@@ -55,7 +56,7 @@ func TestGzipCompressor_Compress_OutputIsValidGzip(t *testing.T) {
 	tmpFile.Close()
 
 	compressor := NewGzipCompressor()
-	outputPath, err := compressor.Compress(tmpFile.Name())
+	outputPath, err := compressor.Compress(context.Background(), tmpFile.Name())
 	if err != nil {
 		t.Fatalf("Compress() error = %v", err)
 	}
@@ -77,7 +78,7 @@ func TestGzipCompressor_Compress_OutputIsValidGzip(t *testing.T) {
 
 func TestGzipCompressor_Compress_NonexistentFile(t *testing.T) {
 	compressor := NewGzipCompressor()
-	_, err := compressor.Compress("/nonexistent/file.txt")
+	_, err := compressor.Compress(context.Background(), "/nonexistent/file.txt")
 	if err == nil {
 		t.Error("Compress() should error for nonexistent input file")
 	}
@@ -86,7 +87,7 @@ func TestGzipCompressor_Compress_NonexistentFile(t *testing.T) {
 func TestPassthroughCompressor_ReturnsSamePath(t *testing.T) {
 	compressor := NewPassthroughCompressor()
 	input := "/some/path/dump.sql"
-	output, err := compressor.Compress(input)
+	output, err := compressor.Compress(context.Background(), input)
 	if err != nil {
 		t.Fatalf("Compress() error = %v", err)
 	}

@@ -62,11 +62,22 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/dumptruckd/dumptruckd"
+    homepage: "https://github.com/Saadlulu/dumptruckd"
     description: "A modular database backup daemon"
     license: "MIT"
+    dependencies:
+      - name: postgresql
+        type: optional
+      - name: mysql-client
+        type: optional
     install: |
       bin.install "dumptruckd"
+      etc.install "config/dumptruckd.toml.example" => "dumptruckd/dumptruckd.toml.example"
+      etc.install "config/example-single-file.toml" => "dumptruckd/example-single-file.toml"
+      etc.install "examples/dumptruckd.service" => "dumptruckd/dumptruckd.service"
+    post_install: |
+      (var/"backups/dumptruckd").mkpath
+      (var/"log").mkpath
     test: |
       system "#{bin}/dumptruckd", "-version"
     service: |
@@ -79,7 +90,7 @@ brews:
 nfpms:
   - package_name: dumptruckd
     vendor: dumptruckd
-    homepage: https://github.com/dumptruckd/dumptruckd
+    homepage: https://github.com/Saadlulu/dumptruckd
     description: A modular database backup daemon
     license: MIT
     maintainer: dumptruckd maintainers
@@ -87,9 +98,29 @@ nfpms:
       - deb
       - rpm
     bindir: /usr/bin
+    recommends:
+      - postgresql-client
     contents:
       - src: config/dumptruckd.toml.example
         dst: /etc/dumptruckd/dumptruckd.toml.example
+        type: config
+      - src: config/example-single-file.toml
+        dst: /etc/dumptruckd/example-single-file.toml
+        type: config
+      - src: config/config.d/databases.toml
+        dst: /etc/dumptruckd/config.d/databases.toml
+        type: config
+      - src: config/config.d/uploaders.toml
+        dst: /etc/dumptruckd/config.d/uploaders.toml
+        type: config
+      - src: config/config.d/compressors.toml
+        dst: /etc/dumptruckd/config.d/compressors.toml
+        type: config
+      - src: config/config.d/retention.toml
+        dst: /etc/dumptruckd/config.d/retention.toml
+        type: config
+      - src: config/config.d/backups.toml
+        dst: /etc/dumptruckd/config.d/backups.toml
         type: config
       - src: examples/dumptruckd.service
         dst: /lib/systemd/system/dumptruckd.service
@@ -102,8 +133,8 @@ dockers:
   - goos: linux
     goarch: amd64
     image_templates:
-      - "ghcr.io/dumptruckd/dumptruckd:{{ .Tag }}"
-      - "ghcr.io/dumptruckd/dumptruckd:latest"
+      - "ghcr.io/saadlulu/dumptruckd:{{ .Tag }}"
+      - "ghcr.io/saadlulu/dumptruckd:latest"
     dockerfile: Dockerfile
     build_flag_templates:
       - "--pull"

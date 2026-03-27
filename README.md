@@ -25,10 +25,10 @@
 
 ```bash
 # From source
-go install github.com/dumptruckd/dumptruckd/cmd/dumptruckd@latest
+go install github.com/Saadlulu/dumptruckd/cmd/dumptruckd@latest
 
 # Or build from source
-git clone https://github.com/dumptruckd/dumptruckd
+git clone https://github.com/Saadlulu/dumptruckd
 cd dumptruckd
 make build
 ```

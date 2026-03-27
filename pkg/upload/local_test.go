@@ -161,3 +161,119 @@ func TestLocalUploader_ImplementsVerifiableUploader(t *testing.T) {
 	// Compile-time check that LocalUploader satisfies VerifiableUploader
 	var _ VerifiableUploader = uploader
 }
+
+func TestLocalUploader_Verify_RejectsPathOutsideBase(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	uploader, err := NewLocalUploader(tmpDir)
+	if err != nil {
+		t.Fatalf("NewLocalUploader() error = %v", err)
+	}
+
+	err = uploader.Verify(context.Background(), "/etc/passwd")
+	if err == nil {
+		t.Fatal("Verify() should reject path outside base directory")
+	}
+	if !strings.Contains(err.Error(), "outside base directory") {
+		t.Errorf("Verify() error = %q, want it to mention 'outside base directory'", err.Error())
+	}
+}
+
+func TestLocalUploader_Delete_RejectsPathOutsideBase(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	uploader, err := NewLocalUploader(tmpDir)
+	if err != nil {
+		t.Fatalf("NewLocalUploader() error = %v", err)
+	}
+
+	err = uploader.Delete(context.Background(), "/etc/passwd")
+	if err == nil {
+		t.Fatal("Delete() should reject path outside base directory")
+	}
+	if !strings.Contains(err.Error(), "outside base directory") {
+		t.Errorf("Delete() error = %q, want it to mention 'outside base directory'", err.Error())
+	}
+}
+
+func TestLocalUploader_Verify_RejectsTraversal(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	uploader, err := NewLocalUploader(tmpDir)
+	if err != nil {
+		t.Fatalf("NewLocalUploader() error = %v", err)
+	}
+
+	traversalPath := tmpDir + "/../../../etc/passwd"
+	err = uploader.Verify(context.Background(), traversalPath)
+	if err == nil {
+		t.Fatal("Verify() should reject traversal path")
+	}
+	if !strings.Contains(err.Error(), "outside base directory") {
+		t.Errorf("Verify() error = %q, want it to mention 'outside base directory'", err.Error())
+	}
+}
+
+func TestLocalUploader_Delete_RejectsTraversal(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	uploader, err := NewLocalUploader(tmpDir)
+	if err != nil {
+		t.Fatalf("NewLocalUploader() error = %v", err)
+	}
+
+	traversalPath := tmpDir + "/../../../etc/passwd"
+	err = uploader.Delete(context.Background(), traversalPath)
+	if err == nil {
+		t.Fatal("Delete() should reject traversal path")
+	}
+	if !strings.Contains(err.Error(), "outside base directory") {
+		t.Errorf("Delete() error = %q, want it to mention 'outside base directory'", err.Error())
+	}
+}
+
+func TestLocalUploader_Upload_FilePermissions(t *testing.T) {
+	t.Parallel()
+	baseDir := t.TempDir()
+	uploader, err := NewLocalUploader(baseDir)
+	if err != nil {
+		t.Fatalf("NewLocalUploader() error = %v", err)
+	}
+
+	srcFile, err := os.CreateTemp("", "perm-test-*.sql")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(srcFile.Name())
+	srcFile.WriteString("permission test data")
+	srcFile.Close()
+
+	destPath, err := uploader.Upload(context.Background(), srcFile.Name(), "perm-check")
+	if err != nil {
+		t.Fatalf("Upload() error = %v", err)
+	}
+
+	info, err := os.Stat(destPath)
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0600 {
+		t.Errorf("Uploaded file permissions = %o, want 0600", perm)
+	}
+}
+
+func TestLocalUploader_ValidatePath_ExactBasePathAllowed(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	uploader, err := NewLocalUploader(tmpDir)
+	if err != nil {
+		t.Fatalf("NewLocalUploader() error = %v", err)
+	}
+
+	// Verify accepts the base path itself (edge case: absPath == absBase)
+	err = uploader.validatePath(tmpDir)
+	if err != nil {
+		t.Errorf("validatePath() should accept exact base path, got error: %v", err)
+	}
+}

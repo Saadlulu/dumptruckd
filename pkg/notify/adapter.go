@@ -1,14 +1,16 @@
 package notify
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
-// Notifier interface for notification adapters
+// Notifier interface for notification adapters.
+// Accepts a context so notifications can be cancelled during graceful shutdown.
 type Notifier interface {
-	Notify(message string) error
+	Notify(ctx context.Context, message string) error
 }
 
 // NewNotifier creates a notifier based on config

@@ -1,6 +1,6 @@
-module github.com/dumptruckd/dumptruckd
+module github.com/Saadlulu/dumptruckd
 
-go 1.21
+go 1.23
 
 require (
 	github.com/aws/aws-sdk-go v1.48.0

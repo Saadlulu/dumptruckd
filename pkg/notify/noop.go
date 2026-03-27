@@ -1,5 +1,7 @@
 package notify
 
+import "context"
+
 // NoopNotifier is a no-op notifier that does nothing
 type NoopNotifier struct{}
 
@@ -8,8 +10,7 @@ func NewNoopNotifier() *NoopNotifier {
 	return &NoopNotifier{}
 }
 
-func (n *NoopNotifier) Notify(message string) error {
-	// Do nothing
+func (n *NoopNotifier) Notify(ctx context.Context, message string) error {
 	return nil
 }
 

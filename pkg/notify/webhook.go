@@ -2,12 +2,16 @@ package notify
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/dumptruckd/dumptruckd/pkg/config"
+	"github.com/Saadlulu/dumptruckd/internal/utils"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
 // WebhookNotifier sends notifications via generic HTTP POST webhooks.
@@ -21,6 +25,16 @@ func NewWebhookNotifier(cfg config.WebhookConfig) (*WebhookNotifier, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("webhook URL is required")
 	}
+	if !strings.HasPrefix(cfg.URL, "http://") && !strings.HasPrefix(cfg.URL, "https://") {
+		return nil, fmt.Errorf("webhook URL must use http:// or https:// scheme")
+	}
+	if strings.HasPrefix(cfg.URL, "http://") {
+		if !cfg.AllowInsecure {
+			return nil, fmt.Errorf("webhook URL %q uses plain HTTP; set allow_insecure = true to permit unencrypted notifications", cfg.URL)
+		}
+		slog.Warn("webhook URL uses plain HTTP — notification payloads will be sent unencrypted",
+			"url", cfg.URL)
+	}
 
 	return &WebhookNotifier{
 		url: cfg.URL,
@@ -30,10 +44,10 @@ func NewWebhookNotifier(cfg config.WebhookConfig) (*WebhookNotifier, error) {
 	}, nil
 }
 
-func (n *WebhookNotifier) Notify(message string) error {
+func (n *WebhookNotifier) Notify(ctx context.Context, message string) error {
 	payload := map[string]string{
-		"message": message,
-		"timestamp": time.Now().Format(time.RFC3339),
+		"message":   message,
+		"timestamp": utils.Now().Format(time.RFC3339),
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -41,7 +55,7 @@ func (n *WebhookNotifier) Notify(message string) error {
 		return fmt.Errorf("marshal payload: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", n.url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", n.url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -59,4 +73,3 @@ func (n *WebhookNotifier) Notify(message string) error {
 
 	return nil
 }
-

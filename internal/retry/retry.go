@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"math/rand/v2"
 	"time"
 )
 
@@ -37,7 +38,10 @@ func Do(ctx context.Context, cfg Config, log *slog.Logger, operation string, fn 
 		}
 
 		if attempt < cfg.MaxRetries {
-			delay := time.Duration(math.Pow(2, float64(attempt))) * cfg.BaseDelay
+			base := time.Duration(math.Pow(2, float64(attempt))) * cfg.BaseDelay
+			// Add ±25% jitter to prevent thundering herd on concurrent retries
+			jitter := time.Duration(float64(base) * (0.75 + rand.Float64()*0.5))
+			delay := jitter
 			if log != nil {
 				log.Warn("operation failed, retrying",
 					"operation", operation,
