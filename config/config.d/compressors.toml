@@ -1,0 +1,26 @@
+# Compressor Component Definitions
+# Define reusable compression configurations here
+
+# Fast compression (gzip - good balance)
+[compressor.fast]
+type = "gzip"
+
+# Maximum compression (gzip - slower but smaller)
+[compressor.max]
+type = "gzip"
+# Note: Additional options can be added here when supported
+
+# No compression (passthrough)
+[compressor.none]
+type = "none"
+
+# Example: Zstd compression (when implemented)
+# [compressor.zstd]
+# type = "zstd"
+# level = 3
+
+# Example: XZ compression (when implemented)
+# [compressor.xz]
+# type = "xz"
+# level = 6
+

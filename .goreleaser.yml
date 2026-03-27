@@ -1,0 +1,113 @@
+project_name: dumptruckd
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    main: ./cmd/dumptruckd
+    binary: dumptruckd
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - 6
+      - 7
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - install.sh
+      - config/dumptruckd.toml.example
+      - config/example-single-file.toml
+      - examples/dumptruckd.service
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+# Homebrew tap
+brews:
+  - repository:
+      owner: dumptruckd
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/dumptruckd/dumptruckd"
+    description: "A modular database backup daemon"
+    license: "MIT"
+    install: |
+      bin.install "dumptruckd"
+    test: |
+      system "#{bin}/dumptruckd", "-version"
+    service: |
+      run [opt_bin/"dumptruckd", "-config", etc/"dumptruckd/dumptruckd.toml"]
+      keep_alive true
+      log_path var/"log/dumptruckd.log"
+      error_log_path var/"log/dumptruckd.log"
+
+# Deb and RPM packages
+nfpms:
+  - package_name: dumptruckd
+    vendor: dumptruckd
+    homepage: https://github.com/dumptruckd/dumptruckd
+    description: A modular database backup daemon
+    license: MIT
+    maintainer: dumptruckd maintainers
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    contents:
+      - src: config/dumptruckd.toml.example
+        dst: /etc/dumptruckd/dumptruckd.toml.example
+        type: config
+      - src: examples/dumptruckd.service
+        dst: /lib/systemd/system/dumptruckd.service
+        type: config
+    scripts:
+      postinstall: packaging/postinstall.sh
+
+# Docker images
+dockers:
+  - goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/dumptruckd/dumptruckd:{{ .Tag }}"
+      - "ghcr.io/dumptruckd/dumptruckd:latest"
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.Commit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"

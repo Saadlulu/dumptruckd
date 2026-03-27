@@ -1,0 +1,29 @@
+# Retention Component Definitions
+# Define reusable retention policies here
+# Note: For S3, lifecycle policies should handle retention automatically
+# These are mainly useful for local filesystem backups
+
+# Keep backups for 7 days
+[retention.week]
+days = 7
+
+# Keep backups for 10 days
+[retention.ten_days]
+days = 10
+
+# Keep backups for 30 days
+[retention.month]
+days = 30
+
+# Keep backups for 90 days
+[retention.quarter]
+days = 90
+
+# Keep backups for 365 days
+[retention.year]
+days = 365
+
+# No retention (keep forever - use with caution!)
+# [retention.forever]
+# days = 0
+

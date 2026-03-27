@@ -1,0 +1,51 @@
+# dumptruckd Main Configuration File (MODULAR SETUP - RECOMMENDED)
+# 
+# This is the PRIMARY config template for modular configuration.
+# 
+# SETUP INSTRUCTIONS:
+# 1. Copy this file to: config/dumptruckd.toml
+#    cp config/dumptruckd.toml.example config/dumptruckd.toml
+#
+# 2. Edit component files in config.d/ directory:
+#    - config.d/databases.toml
+#    - config.d/uploaders.toml
+#    - config.d/compressors.toml
+#    - config.d/retention.toml
+#    - config.d/backups.toml
+#
+# 3. This file will automatically load all files from config.d/
+#
+# For single-file configuration, see: config/example-single-file.toml
+
+[logging]
+level = "info"       # debug, info, warn, error
+format = "text"      # text, json
+output = "stdout"    # stdout, stderr, or a file path
+
+# Health check and metrics endpoints (optional)
+[health]
+enabled = false      # Set to true to enable /healthz and /metrics
+port = 8080          # Port for the health server
+
+# Include component files from config.d/ directory
+# Files are loaded in alphabetical order, later files override earlier ones
+include = [
+  "config.d/databases.toml",
+  "config.d/uploaders.toml",
+  "config.d/compressors.toml",
+  "config.d/retention.toml",
+  "config.d/backups.toml",
+]
+
+# Alternatively, you can use glob patterns:
+# include = ["config.d/*.toml"]
+
+# Or reference specific files:
+# include = [
+#   "databases.toml",
+#   "uploaders.toml",
+# ]
+
+# Note: You can also define components inline in this file if preferred
+# See config/example-single-file.toml for single-file examples
+

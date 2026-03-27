@@ -1,0 +1,37 @@
+[Unit]
+Description=dumptruckd - Database Backup Daemon
+Documentation=https://github.com/dumptruckd/dumptruckd
+After=network.target postgresql.service mysql.service
+
+[Service]
+Type=simple
+User=dumptruckd
+Group=dumptruckd
+WorkingDirectory=/etc/dumptruckd
+ExecStart=/usr/local/bin/dumptruckd -config /etc/dumptruckd/dumptruckd.toml
+Restart=on-failure
+RestartSec=10s
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/dumptruckd
+
+# Environment variables (load from .env file)
+EnvironmentFile=/etc/dumptruckd/.env
+
+# Alternative: Use secret files (more secure)
+# Environment="DB_PASSWORD_FILE=/etc/dumptruckd/secrets/db_password"
+# Environment="AWS_ACCESS_KEY_ID_FILE=/etc/dumptruckd/secrets/aws_access_key_id"
+# Environment="AWS_SECRET_ACCESS_KEY_FILE=/etc/dumptruckd/secrets/aws_secret_access_key"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dumptruckd
+
+[Install]
+WantedBy=multi-user.target
+

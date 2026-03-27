@@ -1,0 +1,115 @@
+# dumptruckd Single-File Configuration Example
+# 
+# This is an ALTERNATIVE to the modular setup.
+# Use this if you prefer everything in one file instead of separate component files.
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy this file to: config/dumptruckd.toml
+#    cp config/example-single-file.toml config/dumptruckd.toml
+#
+# 2. Edit the file with your settings
+#
+# For modular setup (recommended), see: config/dumptruckd.toml.example
+
+[logging]
+level = "info"       # debug, info, warn, error
+format = "text"      # text, json
+output = "stdout"    # stdout, stderr, or a file path
+
+# Health check and metrics endpoints (optional)
+# GET /healthz - JSON status with per-backup stats
+# GET /metrics - Prometheus-format metrics
+[health]
+enabled = false
+port = 8080
+
+# Option 1: Include component files (recommended for modular setup)
+# Uncomment to use modular config files:
+# include = [
+#   "config.d/databases.toml",
+#   "config.d/uploaders.toml",
+#   "config.d/compressors.toml",
+#   "config.d/retention.toml",
+# ]
+
+# Option 2: Define components inline (for simple setups)
+# You can also define named components here and reference them in backups
+
+# Example: Define a database component
+[database.prod_postgres]
+type = "postgres"
+host = "db.example.com"
+port = 5432
+database = "production"
+username = "backup_user"
+# Password from environment: DB_PASSWORD or DB_PASSWORD_production
+
+# Example: Define an uploader component
+[uploader.prod_s3]
+type = "s3"
+  [uploader.prod_s3.s3]
+  bucket = "my-backup-bucket"
+  region = "us-east-1"
+  prefix = "db"
+  # Credentials from environment: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+# Example: Define a compressor component
+[compressor.fast]
+type = "gzip"
+
+[compressor.none]
+type = "none"
+
+# Example: Define retention component
+[retention.ten_days]
+days = 10
+
+[retention.thirty_days]
+days = 30
+
+# Backup jobs - can use component references or inline config
+[[backup]]
+name = "postgres_production"
+schedule = "0 */6 * * *"  # Every 6 hours (cron with seconds)
+
+# Reference components by name
+database_ref = "prod_postgres"
+compress_ref = "fast"
+upload_ref = "prod_s3"
+retention_ref = "ten_days"
+
+# Or use inline config (shown in commented example below)
+# [backup.database]
+# type = "postgres"
+# host = "localhost"
+# port = 5432
+# database = "myapp_production"
+# username = "backup_user"
+# 
+# [backup.compress]
+# type = "gzip"
+# 
+# [backup.upload]
+# type = "s3"
+#   [backup.upload.s3]
+#   bucket = "my-backup-bucket"
+#   region = "us-east-1"
+#   prefix = "db"
+# 
+# [backup.retention]
+# days = 10
+
+[backup.notify]
+type = "slack"  # slack, webhook, email, discord, none
+  [backup.notify.slack]
+  webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+  # Or use SLACK_WEBHOOK_URL environment variable
+
+# Example: Second backup using same components
+# [[backup]]
+# name = "postgres_staging"
+# schedule = "0 0 * * *"  # Daily at midnight
+# database_ref = "prod_postgres"  # Reuse same database config
+# compress_ref = "fast"
+# upload_ref = "prod_s3"
+# retention_ref = "ten_days"

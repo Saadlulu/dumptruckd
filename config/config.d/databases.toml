@@ -1,0 +1,48 @@
+# Database Component Definitions
+# Define reusable database connection configurations here
+
+# Production PostgreSQL database
+[database.prod_postgres]
+type = "postgres"
+host = "db-prod.example.com"
+port = 5432
+database = "production"
+username = "backup_user"
+# Password from environment: DB_PASSWORD_production
+
+# Staging PostgreSQL database
+[database.staging_postgres]
+type = "postgres"
+host = "db-staging.example.com"
+port = 5432
+database = "staging"
+username = "backup_user"
+# Password from environment: DB_PASSWORD_staging
+
+# Development PostgreSQL database
+[database.dev_postgres]
+type = "postgres"
+host = "localhost"
+port = 5432
+database = "development"
+username = "backup_user"
+# Password from environment: DB_PASSWORD_development
+
+# Example: MySQL database (when implemented)
+# [database.prod_mysql]
+# type = "mysql"
+# host = "mysql-prod.example.com"
+# port = 3306
+# database = "production"
+# username = "backup_user"
+# # Password from environment: DB_PASSWORD_production
+
+# Example: MongoDB database (when implemented)
+# [database.prod_mongo]
+# type = "mongodb"
+# host = "mongo-prod.example.com"
+# port = 27017
+# database = "production"
+# username = "backup_user"
+# # Password from environment: DB_PASSWORD_production
+

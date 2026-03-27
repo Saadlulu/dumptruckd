@@ -1,0 +1,51 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+dumptruckd
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config files with secrets (keep example.toml)
+config/dumptruckd.toml
+*.env
+.env.local
+
+# Build artifacts
+dist/
+*.tar.gz
+*.deb
+*.rpm
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+

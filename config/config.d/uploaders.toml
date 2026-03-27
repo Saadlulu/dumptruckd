@@ -1,0 +1,53 @@
+# Uploader Component Definitions
+# Define reusable upload destination configurations here
+
+# Production S3 bucket
+[uploader.prod_s3]
+type = "s3"
+  [uploader.prod_s3.s3]
+  bucket = "my-backup-bucket-prod"
+  region = "us-east-1"
+  prefix = "db"
+  # Credentials from environment: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+# Staging S3 bucket
+[uploader.staging_s3]
+type = "s3"
+  [uploader.staging_s3.s3]
+  bucket = "my-backup-bucket-staging"
+  region = "us-east-1"
+  prefix = "db/staging"
+  # Credentials from environment: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+# Local filesystem uploader
+[uploader.local_backups]
+type = "local"
+path = "/var/backups/dumptruckd"
+
+# Example: S3-compatible service (MinIO, DigitalOcean Spaces, etc.)
+# [uploader.minio]
+# type = "s3"
+#   [uploader.minio.s3]
+#   bucket = "backups"
+#   region = "us-east-1"
+#   endpoint = "https://minio.example.com"
+#   prefix = "db"
+#   # Credentials from environment: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+# Example: GCP Storage (when implemented)
+# [uploader.prod_gcp]
+# type = "gcp"
+#   [uploader.prod_gcp.gcp]
+#   bucket = "my-backup-bucket"
+#   project = "my-gcp-project"
+#   # Credentials from environment: GOOGLE_APPLICATION_CREDENTIALS
+
+# Example: SFTP uploader (when implemented)
+# [uploader.backup_server]
+# type = "sftp"
+# path = "/backups/databases"
+# host = "backup.example.com"
+# port = 22
+# username = "backup"
+# # Password or key from environment
+

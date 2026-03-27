@@ -1,0 +1,49 @@
+# Backup Job Definitions
+# Define your backup jobs here using component references
+
+# Production database backup - runs every 6 hours
+[[backup]]
+name = "postgres_production"
+schedule = "0 */6 * * *"  # Every 6 hours (cron with seconds: second minute hour day month weekday)
+
+# Reference components by name
+database_ref = "prod_postgres"
+compress_ref = "fast"
+upload_ref = "prod_s3"
+retention_ref = "ten_days"
+
+[backup.notify]
+type = "slack"
+  [backup.notify.slack]
+  webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+  # Or use SLACK_WEBHOOK_URL environment variable
+
+# Staging database backup - runs daily at midnight
+[[backup]]
+name = "postgres_staging"
+schedule = "0 0 0 * * *"  # Daily at midnight
+
+database_ref = "staging_postgres"
+compress_ref = "fast"
+upload_ref = "staging_s3"
+retention_ref = "week"
+
+# Development database backup - runs every 12 hours, stores locally
+[[backup]]
+name = "postgres_dev"
+schedule = "0 */12 * * *"  # Every 12 hours
+
+database_ref = "dev_postgres"
+compress_ref = "none"  # No compression for dev
+upload_ref = "local_backups"
+retention_ref = "week"
+
+# Example: Multiple databases to same S3 bucket
+# [[backup]]
+# name = "mysql_production"
+# schedule = "0 0 * * *"  # Daily
+# database_ref = "prod_mysql"
+# compress_ref = "fast"
+# upload_ref = "prod_s3"  # Same bucket, different prefix
+# retention_ref = "month"
+
