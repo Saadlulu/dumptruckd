@@ -73,7 +73,7 @@ func TestLocalUploader_Upload_CopiesContent(t *testing.T) {
 	srcFile, _ := os.CreateTemp("", "upload-content-*.sql")
 	defer os.Remove(srcFile.Name())
 	content := "SELECT * FROM important_data;"
-	_ = srcFile.WriteString(content)
+	_, _ = srcFile.WriteString(content)
 	srcFile.Close()
 
 	destPath, err := uploader.Upload(context.Background(), srcFile.Name(), "content-test")
