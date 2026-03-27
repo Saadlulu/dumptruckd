@@ -58,7 +58,7 @@ changelog:
 # Homebrew tap
 brews:
   - repository:
-      owner: dumptruckd
+      owner: Saadlulu
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
