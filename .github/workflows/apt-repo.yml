@@ -80,6 +80,10 @@ jobs:
         run: |
           gpg --armor --export > apt-repo/dumptruckd.gpg.key
 
+      - name: Add setup script
+        run: |
+          cp apt-setup.sh apt-repo/setup.sh
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

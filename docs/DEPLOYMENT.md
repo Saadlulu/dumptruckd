@@ -5,15 +5,14 @@
 ### Option A: Homebrew (macOS/Linux)
 
 ```bash
-brew install dumptruckd/tap/dumptruckd
+brew tap Saadlulu/tap
+brew install dumptruckd
 ```
 
 ### Option B: APT (Debian/Ubuntu)
 
 ```bash
-curl -fsSL https://saadlulu.github.io/dumptruckd/dumptruckd.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/dumptruckd.gpg
-echo "deb [signed-by=/usr/share/keyrings/dumptruckd.gpg] https://saadlulu.github.io/dumptruckd stable main" | sudo tee /etc/apt/sources.list.d/dumptruckd.list
-sudo apt-get update
+curl -fsSL https://saadlulu.github.io/dumptruckd/setup.sh | sudo bash
 sudo apt-get install dumptruckd
 ```
 
