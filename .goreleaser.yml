@@ -72,9 +72,10 @@ brews:
         type: optional
     install: |
       bin.install "dumptruckd"
-      etc.install "config/dumptruckd.toml.example" => "dumptruckd/dumptruckd.toml.example"
-      etc.install "config/example-single-file.toml" => "dumptruckd/example-single-file.toml"
-      etc.install "examples/dumptruckd.service" => "dumptruckd/dumptruckd.service"
+      (etc/"dumptruckd").mkpath
+      (etc/"dumptruckd").install "config/dumptruckd.toml.example"
+      (etc/"dumptruckd").install "config/example-single-file.toml"
+      (etc/"dumptruckd").install "examples/dumptruckd.service"
     post_install: |
       (var/"backups/dumptruckd").mkpath
       (var/"log").mkpath
