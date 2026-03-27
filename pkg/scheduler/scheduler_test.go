@@ -35,7 +35,7 @@ func (f *fakeDumper) Dump(ctx context.Context) (string, error) {
 	}
 	// Create a real temp file so cleanup works
 	tmp, _ := os.CreateTemp("", "fake-dump-*.sql")
-	tmp.WriteString("fake dump data")
+	_, _ = tmp.WriteString("fake dump data")
 	tmp.Close()
 	f.dumpFile = tmp.Name()
 	return tmp.Name(), nil
@@ -228,7 +228,7 @@ func TestRunBackup_CleansTempFilesOnSuccess(t *testing.T) {
 	cfg := &config.Config{Backups: []config.BackupConfig{validBackupConfig()}}
 	s := newTestScheduler(cfg, fd, fc, fu, fn)
 
-	s.RunBackup(context.Background(), cfg.Backups[0])
+	_ = s.RunBackup(context.Background(), cfg.Backups[0])
 
 	// The dump file should be cleaned up
 	if fd.dumpFile != "" {
@@ -341,7 +341,7 @@ func TestRunBackup_CleansTempFilesOnDumpFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	tmp.WriteString("partial dump data")
+	_, _ = tmp.WriteString("partial dump data")
 	tmp.Close()
 	tmpPath := tmp.Name()
 

@@ -45,7 +45,7 @@ func TestLocalUploader_Upload_CreatesDirectoryStructure(t *testing.T) {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
 	defer os.Remove(srcFile.Name())
-	srcFile.WriteString("test backup data")
+	_, _ = srcFile.WriteString("test backup data")
 	srcFile.Close()
 
 	destPath, err := uploader.Upload(context.Background(), srcFile.Name(), "my-backup")
@@ -245,7 +245,7 @@ func TestLocalUploader_Upload_FilePermissions(t *testing.T) {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
 	defer os.Remove(srcFile.Name())
-	srcFile.WriteString("permission test data")
+	_, _ = srcFile.WriteString("permission test data")
 	srcFile.Close()
 
 	destPath, err := uploader.Upload(context.Background(), srcFile.Name(), "perm-check")

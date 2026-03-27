@@ -240,7 +240,7 @@ func (t *Tester) testUploader(ctx context.Context, uploadCfg config.UploadConfig
 	// Try to verify the file exists (if uploader supports it)
 	if verifiable, ok := uploader.(upload.VerifiableUploader); ok {
 		if err := verifiable.Verify(ctx, remotePath); err != nil {
-			verifiable.Delete(ctx, remotePath)
+			_ = verifiable.Delete(ctx, remotePath)
 			return fmt.Errorf("verify upload failed: %w", err)
 		}
 
@@ -399,7 +399,7 @@ func (t *Tester) testFullPipeline(ctx context.Context, backupCfg config.BackupCo
 	// Step 4: Verify and clean up (if supported)
 	if verifiable, ok := uploader.(upload.VerifiableUploader); ok {
 		if err := verifiable.Verify(ctx, remotePath); err != nil {
-			verifiable.Delete(ctx, remotePath)
+			_ = verifiable.Delete(ctx, remotePath)
 			return fmt.Errorf("verify upload failed: %w", err)
 		}
 

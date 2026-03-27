@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.21', '1.22', '1.23']
+        go-version: ['1.23']
 
     steps:
       - name: Checkout code
@@ -72,8 +72,11 @@ jobs:
         with:
           go-version: '1.23'
 
+      - name: Download dependencies
+        run: go mod download
+
       - name: Build
-        run: go build -v -o dumptruckd ./cmd/dumptruckd
+        run: go build -v ./cmd/dumptruckd
 
   release:
     name: Release
