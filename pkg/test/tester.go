@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/Saadlulu/dumptruckd/pkg/config"
 	"github.com/Saadlulu/dumptruckd/pkg/compress"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 	"github.com/Saadlulu/dumptruckd/pkg/dump"
 	"github.com/Saadlulu/dumptruckd/pkg/notify"
 	"github.com/Saadlulu/dumptruckd/pkg/upload"
@@ -56,7 +56,7 @@ func (t *Tester) testDatabases(ctx context.Context) []TestResult {
 
 	for name, dbCfg := range t.cfg.Databases {
 		result := TestResult{Component: fmt.Sprintf("database.%s", name)}
-		
+
 		// Test connection and small dump
 		if err := t.testDatabase(ctx, dbCfg); err != nil {
 			result.Status = "fail"
@@ -66,7 +66,7 @@ func (t *Tester) testDatabases(ctx context.Context) []TestResult {
 			result.Status = "pass"
 			result.Message = "Connection successful, test dump created"
 		}
-		
+
 		results = append(results, result)
 	}
 
@@ -130,7 +130,7 @@ func (t *Tester) testCompressors() []TestResult {
 
 	for name, compCfg := range t.cfg.Compressors {
 		result := TestResult{Component: fmt.Sprintf("compressor.%s", name)}
-		
+
 		if err := t.testCompressor(compCfg); err != nil {
 			result.Status = "fail"
 			result.Error = err
@@ -139,7 +139,7 @@ func (t *Tester) testCompressors() []TestResult {
 			result.Status = "pass"
 			result.Message = "Compression test successful"
 		}
-		
+
 		results = append(results, result)
 	}
 
@@ -159,7 +159,7 @@ func (t *Tester) testCompressor(compCfg config.CompressConfig) error {
 	testData := "This is a test file for dumptruckd compression testing.\n" +
 		"It contains some sample data that should compress well.\n" +
 		"Repeating text repeating text repeating text.\n"
-	
+
 	if _, err := testFile.WriteString(testData); err != nil {
 		return fmt.Errorf("write test data: %w", err)
 	}
@@ -191,7 +191,7 @@ func (t *Tester) testUploaders(ctx context.Context) []TestResult {
 
 	for name, uploadCfg := range t.cfg.Uploaders {
 		result := TestResult{Component: fmt.Sprintf("uploader.%s", name)}
-		
+
 		if err := t.testUploader(ctx, uploadCfg, name); err != nil {
 			result.Status = "fail"
 			result.Error = err
@@ -200,7 +200,7 @@ func (t *Tester) testUploaders(ctx context.Context) []TestResult {
 			result.Status = "pass"
 			result.Message = "Upload, download, and delete test successful"
 		}
-		
+
 		results = append(results, result)
 	}
 
@@ -218,7 +218,7 @@ func (t *Tester) testUploader(ctx context.Context, uploadCfg config.UploadConfig
 
 	testData := fmt.Sprintf("dumptruckd test file - %s\nCreated at: %s\n",
 		componentName, time.Now().Format(time.RFC3339))
-	
+
 	if _, err := testFile.WriteString(testData); err != nil {
 		return fmt.Errorf("write test data: %w", err)
 	}
@@ -237,17 +237,15 @@ func (t *Tester) testUploader(ctx context.Context, uploadCfg config.UploadConfig
 		return fmt.Errorf("upload failed: %w", err)
 	}
 
-	// Try to verify the file exists (if uploader supports it)
-	if verifiable, ok := uploader.(upload.VerifiableUploader); ok {
-		if err := verifiable.Verify(ctx, remotePath); err != nil {
-			_ = verifiable.Delete(ctx, remotePath)
-			return fmt.Errorf("verify upload failed: %w", err)
-		}
+	// Verify the file exists
+	if err := uploader.Verify(ctx, remotePath); err != nil {
+		_ = uploader.Delete(ctx, remotePath)
+		return fmt.Errorf("verify upload failed: %w", err)
+	}
 
-		// Delete the test file
-		if err := verifiable.Delete(ctx, remotePath); err != nil {
-			return fmt.Errorf("delete test file failed: %w", err)
-		}
+	// Delete the test file
+	if err := uploader.Delete(ctx, remotePath); err != nil {
+		return fmt.Errorf("delete test file failed: %w", err)
 	}
 
 	return nil
@@ -272,7 +270,7 @@ func (t *Tester) testNotifiers() []TestResult {
 		notifiersTested[key] = true
 
 		result := TestResult{Component: fmt.Sprintf("notify.%s (backup: %s)", backup.Notify.Type, backup.Name)}
-		
+
 		if err := t.testNotifier(backup.Notify); err != nil {
 			result.Status = "fail"
 			result.Error = err
@@ -281,7 +279,7 @@ func (t *Tester) testNotifiers() []TestResult {
 			result.Status = "pass"
 			result.Message = "Test notification sent successfully"
 		}
-		
+
 		results = append(results, result)
 	}
 
@@ -295,9 +293,9 @@ func (t *Tester) testNotifier(notifyCfg config.NotifyConfig) error {
 		return fmt.Errorf("create notifier: %w", err)
 	}
 
-	testMsg := fmt.Sprintf("🧪 dumptruckd test notification\nTime: %s\nThis is a test message to verify notification configuration.", 
+	testMsg := fmt.Sprintf("dumptruckd test notification\nTime: %s\nThis is a test message to verify notification configuration.",
 		time.Now().Format(time.RFC3339))
-	
+
 	if err := notifier.Notify(context.Background(), testMsg); err != nil {
 		return fmt.Errorf("send notification failed: %w", err)
 	}
@@ -396,18 +394,15 @@ func (t *Tester) testFullPipeline(ctx context.Context, backupCfg config.BackupCo
 		return fmt.Errorf("upload failed: %w", err)
 	}
 
-	// Step 4: Verify and clean up (if supported)
-	if verifiable, ok := uploader.(upload.VerifiableUploader); ok {
-		if err := verifiable.Verify(ctx, remotePath); err != nil {
-			_ = verifiable.Delete(ctx, remotePath)
-			return fmt.Errorf("verify upload failed: %w", err)
-		}
+	// Step 4: Verify and clean up
+	if err := uploader.Verify(ctx, remotePath); err != nil {
+		_ = uploader.Delete(ctx, remotePath)
+		return fmt.Errorf("verify upload failed: %w", err)
+	}
 
-		if err := verifiable.Delete(ctx, remotePath); err != nil {
-			return fmt.Errorf("delete test file failed: %w", err)
-		}
+	if err := uploader.Delete(ctx, remotePath); err != nil {
+		return fmt.Errorf("delete test file failed: %w", err)
 	}
 
 	return nil
 }
-

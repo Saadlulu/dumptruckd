@@ -13,4 +13,3 @@ func NewNoopNotifier() *NoopNotifier {
 func (n *NoopNotifier) Notify(ctx context.Context, message string) error {
 	return nil
 }
-

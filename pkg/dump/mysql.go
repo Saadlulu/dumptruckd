@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/Saadlulu/dumptruckd/internal/credentials"
 	"github.com/Saadlulu/dumptruckd/internal/utils"
 	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
@@ -23,6 +24,9 @@ func NewMySQLDumper(cfg config.DatabaseConfig) (*MySQLDumper, error) {
 	if cfg.Database == "" {
 		return nil, fmt.Errorf("mysql database name is required")
 	}
+	if cfg.Username == "" {
+		return nil, fmt.Errorf("mysql username is required")
+	}
 	return &MySQLDumper{cfg: cfg}, nil
 }
 
@@ -37,7 +41,7 @@ func (d *MySQLDumper) TestDump(ctx context.Context) (string, error) {
 }
 
 func (d *MySQLDumper) runMySQLDump(ctx context.Context, schemaOnly bool) (string, error) {
-	password, err := getDBPassword(d.cfg.Database, "mysql")
+	password, err := credentials.GetDBPassword(d.cfg.Database, "mysql")
 	if err != nil {
 		return "", err
 	}
@@ -97,6 +101,11 @@ func (d *MySQLDumper) runMySQLDump(ctx context.Context, schemaOnly bool) (string
 	args = append(args, d.cfg.Database)
 
 	cmd := exec.CommandContext(ctx, "mysqldump", args...)
+	// Minimal environment: only what mysqldump needs.
+	cmd.Env = []string{
+		fmt.Sprintf("HOME=%s", os.Getenv("HOME")),
+		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+	}
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

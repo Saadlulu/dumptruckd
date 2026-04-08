@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/Saadlulu/dumptruckd/internal/fileops"
 )
 
 // GzipCompressor compresses files using gzip.
@@ -32,7 +34,7 @@ func (c *GzipCompressor) Compress(ctx context.Context, inputPath string) (string
 
 	gzipWriter := gzip.NewWriter(outputFile)
 
-	if _, err := io.Copy(gzipWriter, readerWithContext(ctx, inputFile)); err != nil {
+	if _, err := io.Copy(gzipWriter, fileops.ReaderWithContext(ctx, inputFile)); err != nil {
 		gzipWriter.Close()
 		outputFile.Close()
 		os.Remove(outputPath)
@@ -54,25 +56,6 @@ func (c *GzipCompressor) Compress(ctx context.Context, inputPath string) (string
 	return outputPath, nil
 }
 
-// readerWithContext wraps a reader to check for context cancellation periodically.
-func readerWithContext(ctx context.Context, r io.Reader) io.Reader {
-	return &ctxReader{ctx: ctx, r: r}
-}
-
-type ctxReader struct {
-	ctx context.Context
-	r   io.Reader
-}
-
-func (cr *ctxReader) Read(p []byte) (int, error) {
-	select {
-	case <-cr.ctx.Done():
-		return 0, cr.ctx.Err()
-	default:
-		return cr.r.Read(p)
-	}
-}
-
 // PassthroughCompressor returns files unchanged (no compression).
 type PassthroughCompressor struct{}
 
@@ -84,4 +67,3 @@ func NewPassthroughCompressor() *PassthroughCompressor {
 func (c *PassthroughCompressor) Compress(ctx context.Context, inputPath string) (string, error) {
 	return inputPath, nil
 }
-

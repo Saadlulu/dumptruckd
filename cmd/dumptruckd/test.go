@@ -11,14 +11,14 @@ import (
 )
 
 func runTest(configPath string, verbose bool) {
-	fmt.Println("🧪 dumptruckd Configuration Tester")
+	fmt.Println("dumptruckd Configuration Tester")
 	fmt.Println("===================================")
 	fmt.Println()
 
 	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to load config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "FAIL: Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -33,7 +33,7 @@ func runTest(configPath string, verbose bool) {
 	fmt.Println()
 	results, err := tester.TestAll(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Test execution failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "FAIL: Test execution failed: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -48,19 +48,19 @@ func runTest(configPath string, verbose bool) {
 	for _, result := range results {
 		switch result.Status {
 		case "pass":
-			fmt.Printf("✅ %s: %s\n", result.Component, result.Message)
+			fmt.Printf("PASS %s: %s\n", result.Component, result.Message)
 			passed++
 		case "fail":
-			fmt.Printf("❌ %s: %s\n", result.Component, result.Message)
+			fmt.Printf("FAIL %s: %s\n", result.Component, result.Message)
 			if verbose && result.Error != nil {
 				fmt.Printf("   Error: %v\n", result.Error)
 			}
 			failed++
 		case "skip":
-			fmt.Printf("⏭️  %s: %s\n", result.Component, result.Message)
+			fmt.Printf("SKIP %s: %s\n", result.Component, result.Message)
 			skipped++
 		default:
-			fmt.Printf("❓ %s: %s\n", result.Component, result.Message)
+			fmt.Printf("?    %s: %s\n", result.Component, result.Message)
 		}
 	}
 
@@ -68,9 +68,9 @@ func runTest(configPath string, verbose bool) {
 	fmt.Printf("Summary: %d passed, %d failed, %d skipped\n", passed, failed, skipped)
 
 	if failed > 0 {
-		fmt.Println("\n⚠️  Some tests failed. Please check your configuration.")
+		fmt.Println("\nSome tests failed. Please check your configuration.")
 		os.Exit(1)
 	}
 
-	fmt.Println("\n✅ All tests passed! Your configuration is ready to use.")
+	fmt.Println("\nAll tests passed. Your configuration is ready to use.")
 }

@@ -65,22 +65,22 @@ func TestNewNotifier(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "email not implemented",
+			name:    "email not supported",
 			cfg:     config.NotifyConfig{Type: "email"},
 			wantErr: true,
-			errMsg:  "not yet implemented",
+			errMsg:  "unknown or unsupported",
 		},
 		{
-			name:    "discord not implemented",
+			name:    "discord not supported",
 			cfg:     config.NotifyConfig{Type: "discord"},
 			wantErr: true,
-			errMsg:  "not yet implemented",
+			errMsg:  "unknown or unsupported",
 		},
 		{
 			name:    "unknown type",
 			cfg:     config.NotifyConfig{Type: "telegram"},
 			wantErr: true,
-			errMsg:  "unknown notification type",
+			errMsg:  "unknown or unsupported",
 		},
 	}
 

@@ -68,4 +68,3 @@ func (n *SlackNotifier) Notify(ctx context.Context, message string) error {
 
 	return nil
 }
-

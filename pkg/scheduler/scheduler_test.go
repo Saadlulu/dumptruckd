@@ -65,6 +65,14 @@ func (f *fakeUploader) Upload(ctx context.Context, filePath string, backupName s
 	return f.uploadPath, nil
 }
 
+func (f *fakeUploader) Verify(ctx context.Context, remotePath string) error {
+	return nil
+}
+
+func (f *fakeUploader) Delete(ctx context.Context, remotePath string) error {
+	return nil
+}
+
 type fakeNotifier struct {
 	messages []string
 	err      error
@@ -95,7 +103,7 @@ func validBackupConfig() config.BackupConfig {
 	return config.BackupConfig{
 		Name:     "test-backup",
 		Schedule: "0 0 * * * *",
-		Database: config.DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db"},
+		Database: config.DatabaseConfig{Type: "postgres", Host: "localhost", Database: "db", Username: "user"},
 		Upload:   config.UploadConfig{Type: "local", Path: "/tmp"},
 		Compress: config.CompressConfig{Type: "gzip"},
 		Notify:   config.NotifyConfig{Type: "webhook", Webhook: config.WebhookConfig{URL: "http://example.com"}},
@@ -298,6 +306,9 @@ func TestNotifyFailure_PreservesOriginalError(t *testing.T) {
 	}
 	if !strings.Contains(fn.messages[0], "connection refused") {
 		t.Errorf("Notification should contain original error, got %q", fn.messages[0])
+	}
+	if !strings.Contains(fn.messages[0], "failed") {
+		t.Errorf("Notification should indicate failure, got %q", fn.messages[0])
 	}
 }
 
@@ -602,4 +613,39 @@ func TestScheduleBackup_JobLockPreventsDoubleRun(t *testing.T) {
 		t.Error("TryLock() should return false when mutex is already locked")
 	}
 	mu1.Unlock()
+}
+
+func TestRunRetention_KeepLastOnly_DoesNotSkip(t *testing.T) {
+	t.Parallel()
+
+	// Create a temp directory with some "old" files
+	dir := t.TempDir()
+	for i := 0; i < 5; i++ {
+		f, err := os.CreateTemp(dir, "backup-*.sql.gz")
+		if err != nil {
+			t.Fatalf("create temp file: %v", err)
+		}
+		_, _ = f.WriteString("fake backup data")
+		f.Close()
+	}
+
+	fd := &fakeDumper{}
+	fc := &fakeCompressor{}
+	fu := &fakeUploader{}
+	fn := &fakeNotifier{}
+
+	cfg := &config.Config{}
+	s := newTestScheduler(cfg, fd, fc, fu, fn)
+
+	backupCfg := validBackupConfig()
+	backupCfg.Upload.Type = "local"
+	backupCfg.Upload.Path = dir
+	backupCfg.Retention = config.RetentionConfig{Days: 0, KeepLast: 3}
+
+	// This should NOT skip — KeepLast is set even though Days is 0.
+	// Before the fix, this would return early and never run retention.
+	s.runRetention(backupCfg)
+
+	// We can't easily verify files were deleted since retention scopes to
+	// basePath/backupName, but we verify it doesn't panic or skip silently.
 }

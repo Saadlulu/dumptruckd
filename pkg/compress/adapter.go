@@ -23,14 +23,9 @@ func NewCompressor(cfg config.CompressConfig) (Compressor, error) {
 	switch compressType {
 	case "gzip":
 		return NewGzipCompressor(), nil
-	case "zstd":
-		return nil, fmt.Errorf("zstd compressor not yet implemented")
-	case "xz":
-		return nil, fmt.Errorf("xz compressor not yet implemented")
 	case "none":
 		return NewPassthroughCompressor(), nil
 	default:
-		return nil, fmt.Errorf("unknown compression type: %s", compressType)
+		return nil, fmt.Errorf("unknown or unsupported compression type: %s", compressType)
 	}
 }
-

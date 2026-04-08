@@ -30,22 +30,10 @@ func TestNewCompressor(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "zstd not implemented",
-			cfg:     config.CompressConfig{Type: "zstd"},
-			wantErr: true,
-			errMsg:  "not yet implemented",
-		},
-		{
-			name:    "xz not implemented",
-			cfg:     config.CompressConfig{Type: "xz"},
-			wantErr: true,
-			errMsg:  "not yet implemented",
-		},
-		{
 			name:    "unknown type",
 			cfg:     config.CompressConfig{Type: "lz4"},
 			wantErr: true,
-			errMsg:  "unknown compression type",
+			errMsg:  "unknown or unsupported",
 		},
 	}
 

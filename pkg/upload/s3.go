@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Saadlulu/dumptruckd/internal/utils"
+	"github.com/Saadlulu/dumptruckd/pkg/config"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/Saadlulu/dumptruckd/internal/utils"
-	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
 // S3Uploader uploads backup files to Amazon S3 or S3-compatible services.

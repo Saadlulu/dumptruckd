@@ -19,4 +19,3 @@ func FormatDatePath(t time.Time) string {
 func ParseTimestamp(s string) (time.Time, error) {
 	return time.Parse("20060102_150405", s)
 }
-

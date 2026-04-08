@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/Saadlulu/dumptruckd/internal/credentials"
 	"github.com/Saadlulu/dumptruckd/internal/utils"
 	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
@@ -23,6 +24,9 @@ func NewPostgresDumper(cfg config.DatabaseConfig) (*PostgresDumper, error) {
 	if cfg.Database == "" {
 		return nil, fmt.Errorf("postgres database name is required")
 	}
+	if cfg.Username == "" {
+		return nil, fmt.Errorf("postgres username is required")
+	}
 	return &PostgresDumper{cfg: cfg}, nil
 }
 
@@ -39,7 +43,7 @@ func (d *PostgresDumper) TestDump(ctx context.Context) (string, error) {
 // runPgDump executes pg_dump with the configured options.
 // If schemaOnly is true, only the schema is dumped (useful for testing).
 func (d *PostgresDumper) runPgDump(ctx context.Context, schemaOnly bool) (string, error) {
-	password, err := getDBPassword(d.cfg.Database, "postgres")
+	password, err := credentials.GetDBPassword(d.cfg.Database, "postgres")
 	if err != nil {
 		return "", err
 	}
@@ -99,7 +103,13 @@ func (d *PostgresDumper) runPgDump(ctx context.Context, schemaOnly bool) (string
 	}
 
 	cmd := exec.CommandContext(ctx, "pg_dump", args...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSFILE=%s", pgpassFile.Name()))
+	// Minimal environment: only what pg_dump needs. Do not inherit the full
+	// process environment to avoid leaking unrelated credentials (e.g. PGPASSWORD).
+	cmd.Env = []string{
+		fmt.Sprintf("PGPASSFILE=%s", pgpassFile.Name()),
+		fmt.Sprintf("HOME=%s", os.Getenv("HOME")),
+		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+	}
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

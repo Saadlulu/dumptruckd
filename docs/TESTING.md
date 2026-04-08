@@ -35,23 +35,23 @@ For each backup job, runs the complete pipeline: dump → compress → upload �
 ## Example Output
 
 ```
-🧪 dumptruckd Configuration Tester
+dumptruckd Configuration Tester
 ===================================
 
 Running tests...
 
 Test Results:
 -------------
-✅ database.prod_postgres: Connection successful, test dump created
-✅ compressor.fast: Compression test successful
-✅ uploader.prod_s3: Upload, download, and delete test successful
-✅ backup.prod_backup.database: Database connection successful
-✅ backup.prod_backup.compress: Compression test successful
-✅ backup.prod_backup.pipeline: Full pipeline test successful
+PASS database.prod_postgres: Connection successful, test dump created
+PASS compressor.fast: Compression test successful
+PASS uploader.prod_s3: Upload, download, and delete test successful
+PASS backup.prod_backup.database: Database connection successful
+PASS backup.prod_backup.compress: Compression test successful
+PASS backup.prod_backup.pipeline: Full pipeline test successful
 
 Summary: 6 passed, 0 failed, 0 skipped
 
-✅ All tests passed! Your configuration is ready to use.
+All tests passed. Your configuration is ready to use.
 ```
 
 ## Troubleshooting

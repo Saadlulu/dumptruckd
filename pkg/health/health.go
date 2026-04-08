@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -20,29 +21,32 @@ const DefaultPort = 8080
 type Status struct {
 	Status    string                  `json:"status"`
 	Uptime    string                  `json:"uptime"`
-	StartedAt time.Time              `json:"started_at"`
+	StartedAt time.Time               `json:"started_at"`
 	Backups   map[string]BackupStatus `json:"backups,omitempty"`
 }
 
 // BackupStatus tracks the last run info for a backup job.
 type BackupStatus struct {
-	LastRun     *time.Time `json:"last_run,omitempty"`
-	LastSuccess *time.Time `json:"last_success,omitempty"`
-	LastFailure *time.Time `json:"last_failure,omitempty"`
-	LastError   string     `json:"last_error,omitempty"`
-	Duration    string     `json:"duration,omitempty"`
-	RunCount    int64      `json:"run_count"`
-	FailCount   int64      `json:"fail_count"`
+	LastRun             *time.Time `json:"last_run,omitempty"`
+	LastSuccess         *time.Time `json:"last_success,omitempty"`
+	LastFailure         *time.Time `json:"last_failure,omitempty"`
+	LastError           string     `json:"last_error,omitempty"`
+	Duration            string     `json:"duration,omitempty"`
+	RunCount            int64      `json:"run_count"`
+	FailCount           int64      `json:"fail_count"`
+	LastBackupSizeBytes int64      `json:"last_backup_size_bytes,omitempty"`
+	NextScheduledRun    *time.Time `json:"next_scheduled_run,omitempty"`
+	ConsecutiveFailures int        `json:"consecutive_failures"`
 }
 
 // Server provides health check and metrics endpoints.
 type Server struct {
-	port       int
-	log        *slog.Logger
-	startedAt  time.Time
-	mu         sync.RWMutex
-	backups    map[string]*BackupStatus
-	server     *http.Server
+	port        int
+	log         *slog.Logger
+	startedAt   time.Time
+	mu          sync.RWMutex
+	backups     map[string]*BackupStatus
+	server      *http.Server
 	bearerToken string // optional; if set, requests must include Authorization: Bearer <token>
 }
 
@@ -74,7 +78,7 @@ func (s *Server) WithToken(token string) *Server {
 	return s
 }
 
-// RecordSuccess records a successful backup run.
+// RecordSuccess records a successful backup run and resets consecutive failures.
 func (s *Server) RecordSuccess(name string, duration time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -85,9 +89,10 @@ func (s *Server) RecordSuccess(name string, duration time.Duration) {
 	bs.LastSuccess = &now
 	bs.Duration = duration.String()
 	bs.RunCount++
+	bs.ConsecutiveFailures = 0
 }
 
-// RecordFailure records a failed backup run.
+// RecordFailure records a failed backup run and increments consecutive failures.
 func (s *Server) RecordFailure(name string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -99,6 +104,25 @@ func (s *Server) RecordFailure(name string, err error) {
 	bs.LastError = err.Error()
 	bs.RunCount++
 	bs.FailCount++
+	bs.ConsecutiveFailures++
+}
+
+// RecordSize records the size of the last backup for a job.
+func (s *Server) RecordSize(name string, bytes int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	bs := s.getOrCreate(name)
+	bs.LastBackupSizeBytes = bytes
+}
+
+// SetNextRun sets the next scheduled run time for a backup job.
+func (s *Server) SetNextRun(name string, t time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	bs := s.getOrCreate(name)
+	bs.NextScheduledRun = &t
 }
 
 func (s *Server) getOrCreate(name string) *BackupStatus {
@@ -143,11 +167,13 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // requireAuth wraps a handler with optional bearer token authentication.
 // If no token is configured, requests pass through.
+// Uses constant-time comparison to prevent timing attacks.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.bearerToken != "" {
 			auth := r.Header.Get("Authorization")
-			if auth != "Bearer "+s.bearerToken {
+			expected := "Bearer " + s.bearerToken
+			if len(auth) != len(expected) || subtle.ConstantTimeCompare([]byte(auth), []byte(expected)) != 1 {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -169,6 +195,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	for name, bs := range s.backups {
 		status.Backups[name] = *bs
+		if bs.ConsecutiveFailures >= 3 {
+			status.Status = "degraded"
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

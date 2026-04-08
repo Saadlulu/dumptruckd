@@ -20,14 +20,9 @@ func NewNotifier(cfg config.NotifyConfig) (Notifier, error) {
 		return NewSlackNotifier(cfg.Slack)
 	case "webhook":
 		return NewWebhookNotifier(cfg.Webhook)
-	case "email":
-		return nil, fmt.Errorf("email notifier not yet implemented")
-	case "discord":
-		return nil, fmt.Errorf("discord notifier not yet implemented")
 	case "none":
 		return NewNoopNotifier(), nil
 	default:
-		return nil, fmt.Errorf("unknown notification type: %s", cfg.Type)
+		return nil, fmt.Errorf("unknown or unsupported notification type: %s", cfg.Type)
 	}
 }
-

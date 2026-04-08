@@ -154,12 +154,12 @@ func TestLocalUploader_Delete_NonexistentFile(t *testing.T) {
 	}
 }
 
-func TestLocalUploader_ImplementsVerifiableUploader(t *testing.T) {
+func TestLocalUploader_ImplementsUploader(t *testing.T) {
 	tmpDir := t.TempDir()
 	uploader, _ := NewLocalUploader(tmpDir)
 
-	// Compile-time check that LocalUploader satisfies VerifiableUploader
-	var _ VerifiableUploader = uploader
+	// Compile-time check that LocalUploader satisfies Uploader
+	var _ Uploader = uploader
 }
 
 func TestLocalUploader_Verify_RejectsPathOutsideBase(t *testing.T) {

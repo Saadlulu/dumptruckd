@@ -27,31 +27,48 @@ type Config struct {
 	Health      HealthConfig               `toml:"health"`
 }
 
+// EncryptConfig defines client-side encryption settings for a backup job.
+type EncryptConfig struct {
+	Type string `toml:"type"` // age, gpg, none
+}
+
+// HooksConfig defines pre/post backup hook commands.
+type HooksConfig struct {
+	Pre  string `toml:"pre,omitempty"`
+	Post string `toml:"post,omitempty"`
+}
+
 // BackupConfig defines a single backup job with its schedule and component references.
 type BackupConfig struct {
-	Name      string `toml:"name"`
-	Schedule  string `toml:"schedule"` // cron expression
-	
+	Name     string `toml:"name"`
+	Schedule string `toml:"schedule"` // cron expression
+
 	// Component references (by name) or inline config
-	Database  DatabaseConfig  `toml:"database"`
-	DatabaseRef string        `toml:"database_ref,omitempty"` // Reference to named database
-	
-	Compress  CompressConfig  `toml:"compress,omitempty"`
-	CompressRef string        `toml:"compress_ref,omitempty"` // Reference to named compressor
-	
-	Upload    UploadConfig    `toml:"upload"`
-	UploadRef string          `toml:"upload_ref,omitempty"` // Reference to named uploader
-	
-	Retention RetentionConfig `toml:"retention,omitempty"`
-	RetentionRef string      `toml:"retention_ref,omitempty"` // Reference to named retention
-	
-	Notify    NotifyConfig    `toml:"notify,omitempty"`
-	NotifyRef string          `toml:"notify_ref,omitempty"` // Reference to named notifier
+	Database    DatabaseConfig `toml:"database"`
+	DatabaseRef string         `toml:"database_ref,omitempty"` // Reference to named database
+
+	Compress    CompressConfig `toml:"compress,omitempty"`
+	CompressRef string         `toml:"compress_ref,omitempty"` // Reference to named compressor
+
+	Upload    UploadConfig `toml:"upload"`
+	UploadRef string       `toml:"upload_ref,omitempty"` // Reference to named uploader
+
+	Retention    RetentionConfig `toml:"retention,omitempty"`
+	RetentionRef string          `toml:"retention_ref,omitempty"` // Reference to named retention
+
+	Notify    NotifyConfig `toml:"notify,omitempty"`
+	NotifyRef string       `toml:"notify_ref,omitempty"` // Reference to named notifier
+
+	// Extended fields for verification, encryption, size tracking, and hooks
+	Verify             bool          `toml:"verify,omitempty"`
+	Encrypt            EncryptConfig `toml:"encrypt,omitempty"`
+	SizeAlertThreshold float64       `toml:"size_alert_threshold,omitempty"`
+	Hooks              HooksConfig   `toml:"hooks,omitempty"`
 }
 
 // DatabaseConfig defines a database connection for dumping.
 type DatabaseConfig struct {
-	Type     string `toml:"type"` // postgres, mysql, mongodb, sqlite, redis
+	Type     string `toml:"type"` // postgres, mysql
 	Host     string `toml:"host"`
 	Port     int    `toml:"port"`
 	Database string `toml:"database"`
@@ -60,28 +77,28 @@ type DatabaseConfig struct {
 
 // CompressConfig defines compression settings.
 type CompressConfig struct {
-	Type string `toml:"type"` // gzip, zstd, xz, none
+	Type string `toml:"type"` // gzip, none
 }
 
 // UploadConfig defines an upload destination.
 type UploadConfig struct {
-	Type     string `toml:"type"` // s3, gcp, sftp, local
-	S3       S3Config `toml:"s3,omitempty"`
-	Path     string `toml:"path,omitempty"` // for local or sftp
+	Type string   `toml:"type"` // s3, local
+	S3   S3Config `toml:"s3,omitempty"`
+	Path string   `toml:"path,omitempty"` // for local or sftp
 }
 
 // S3Config defines S3-specific upload settings.
 type S3Config struct {
-	Bucket    string `toml:"bucket"`
-	Region    string `toml:"region"`
-	Prefix    string `toml:"prefix,omitempty"`
-	Endpoint  string `toml:"endpoint,omitempty"`
+	Bucket   string `toml:"bucket"`
+	Region   string `toml:"region"`
+	Prefix   string `toml:"prefix,omitempty"`
+	Endpoint string `toml:"endpoint,omitempty"`
 }
 
 // NotifyConfig defines notification settings for a backup job.
 type NotifyConfig struct {
-	Type   string      `toml:"type"` // slack, email, discord, webhook, none
-	Slack  SlackConfig `toml:"slack,omitempty"`
+	Type    string        `toml:"type"` // slack, webhook, none
+	Slack   SlackConfig   `toml:"slack,omitempty"`
 	Webhook WebhookConfig `toml:"webhook,omitempty"`
 }
 
@@ -92,16 +109,17 @@ type SlackConfig struct {
 
 // WebhookConfig defines generic webhook notification settings.
 type WebhookConfig struct {
-	URL           string `toml:"url"`
+	URL string `toml:"url"`
 	// AllowInsecure permits plain HTTP webhooks. WARNING: notification payloads
 	// include backup names, file paths, and error messages. Only use on trusted
 	// networks where TLS termination happens upstream (e.g. behind a reverse proxy).
-	AllowInsecure bool   `toml:"allow_insecure,omitempty"`
+	AllowInsecure bool `toml:"allow_insecure,omitempty"`
 }
 
 // RetentionConfig defines how long backups are kept.
 type RetentionConfig struct {
-	Days int `toml:"days"` // Keep last N days (S3 lifecycle handles this, but can be used for local)
+	Days     int `toml:"days"`                // Keep last N days (S3 lifecycle handles this, but can be used for local)
+	KeepLast int `toml:"keep_last,omitempty"` // Keep last N backups by count
 }
 
 // LoggingConfig defines structured logging settings.
@@ -375,13 +393,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("no backups configured")
 	}
 
-	knownDBTypes := map[string]bool{"postgres": true, "mysql": true, "mongodb": true, "sqlite": true, "redis": true}
-	implementedDBTypes := map[string]bool{"postgres": true, "mysql": true}
-	knownUploadTypes := map[string]bool{"s3": true, "gcp": true, "sftp": true, "local": true}
-	implementedUploadTypes := map[string]bool{"s3": true, "local": true}
-	knownCompressTypes := map[string]bool{"gzip": true, "zstd": true, "xz": true, "none": true, "": true}
-	implementedCompressTypes := map[string]bool{"gzip": true, "none": true, "": true}
-	knownNotifyTypes := map[string]bool{"slack": true, "webhook": true, "email": true, "discord": true, "none": true, "": true}
+	knownDBTypes := map[string]bool{"postgres": true, "mysql": true}
+	knownUploadTypes := map[string]bool{"s3": true, "local": true}
+	knownCompressTypes := map[string]bool{"gzip": true, "none": true, "": true}
+	knownNotifyTypes := map[string]bool{"slack": true, "webhook": true, "none": true, "": true}
 	cronParser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	for i := range c.Backups {
@@ -411,10 +426,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("backup[%d] (%s): database.type is required", i, backup.Name)
 		}
 		if !knownDBTypes[backup.Database.Type] {
-			return fmt.Errorf("backup[%d] (%s): unknown database type %q", i, backup.Name, backup.Database.Type)
-		}
-		if !implementedDBTypes[backup.Database.Type] {
-			return fmt.Errorf("backup[%d] (%s): database type %q is not yet implemented", i, backup.Name, backup.Database.Type)
+			return fmt.Errorf("backup[%d] (%s): unknown database type %q (supported: postgres, mysql)", i, backup.Name, backup.Database.Type)
 		}
 
 		// Upload validation
@@ -422,10 +434,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("backup[%d] (%s): upload.type is required", i, backup.Name)
 		}
 		if !knownUploadTypes[backup.Upload.Type] {
-			return fmt.Errorf("backup[%d] (%s): unknown upload type %q", i, backup.Name, backup.Upload.Type)
-		}
-		if !implementedUploadTypes[backup.Upload.Type] {
-			return fmt.Errorf("backup[%d] (%s): upload type %q is not yet implemented", i, backup.Name, backup.Upload.Type)
+			return fmt.Errorf("backup[%d] (%s): unknown upload type %q (supported: s3, local)", i, backup.Name, backup.Upload.Type)
 		}
 		if backup.Upload.Type == "s3" && backup.Upload.S3.Bucket == "" {
 			return fmt.Errorf("backup[%d] (%s): s3.bucket is required when upload type is s3", i, backup.Name)
@@ -433,10 +442,7 @@ func (c *Config) Validate() error {
 
 		// Compress validation
 		if !knownCompressTypes[backup.Compress.Type] {
-			return fmt.Errorf("backup[%d] (%s): unknown compress type %q", i, backup.Name, backup.Compress.Type)
-		}
-		if !implementedCompressTypes[backup.Compress.Type] {
-			return fmt.Errorf("backup[%d] (%s): compress type %q is not yet implemented", i, backup.Name, backup.Compress.Type)
+			return fmt.Errorf("backup[%d] (%s): unknown compress type %q (supported: gzip, none)", i, backup.Name, backup.Compress.Type)
 		}
 
 		// Port validation
@@ -446,7 +452,7 @@ func (c *Config) Validate() error {
 
 		// Notification validation
 		if !knownNotifyTypes[backup.Notify.Type] {
-			return fmt.Errorf("backup[%d] (%s): unknown notify type %q", i, backup.Name, backup.Notify.Type)
+			return fmt.Errorf("backup[%d] (%s): unknown notify type %q (supported: slack, webhook, none)", i, backup.Name, backup.Notify.Type)
 		}
 
 		// Database-specific field validation
@@ -466,4 +472,3 @@ func (c *Config) Validate() error {
 
 	return nil
 }
-

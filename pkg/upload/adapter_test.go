@@ -51,22 +51,10 @@ func TestNewUploader(t *testing.T) {
 			errMsg:     "credentials",
 		},
 		{
-			name:    "gcp not implemented",
-			cfg:     config.UploadConfig{Type: "gcp"},
-			wantErr: true,
-			errMsg:  "not yet implemented",
-		},
-		{
-			name:    "sftp not implemented",
-			cfg:     config.UploadConfig{Type: "sftp"},
-			wantErr: true,
-			errMsg:  "not yet implemented",
-		},
-		{
 			name:    "unknown type",
 			cfg:     config.UploadConfig{Type: "ftp"},
 			wantErr: true,
-			errMsg:  "unknown upload type",
+			errMsg:  "unknown or unsupported",
 		},
 	}
 

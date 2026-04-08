@@ -89,7 +89,7 @@ func (w *Watchdog) RecordFailure(name string) {
 	fails := job.consecutiveFails
 	w.mu.Unlock()
 
-	msg := fmt.Sprintf("🚨 Backup '%s' failed (attempt #%d)", name, fails)
+	msg := fmt.Sprintf("ALERT: Backup '%s' failed (attempt #%d)", name, fails)
 	w.sendAlert(msg)
 }
 
@@ -108,13 +108,13 @@ func (w *Watchdog) CheckAll() []string {
 		if job.lastSuccess != nil {
 			if now.Sub(*job.lastSuccess) > deadline {
 				stale = append(stale, name)
-				alerts = append(alerts, fmt.Sprintf("🚨 Backup '%s' is stale — last success was %s ago (expected every %s)",
+				alerts = append(alerts, fmt.Sprintf("ALERT: Backup '%s' is stale -- last success was %s ago (expected every %s)",
 					name, now.Sub(*job.lastSuccess).Round(time.Minute), job.interval))
 			}
 		} else {
 			if now.Sub(job.registeredAt) > deadline {
 				stale = append(stale, name)
-				alerts = append(alerts, fmt.Sprintf("🚨 Backup '%s' has never completed successfully — registered %s ago",
+				alerts = append(alerts, fmt.Sprintf("ALERT: Backup '%s' has never completed successfully -- registered %s ago",
 					name, now.Sub(job.registeredAt).Round(time.Minute)))
 			}
 		}

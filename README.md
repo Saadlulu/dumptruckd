@@ -1,196 +1,423 @@
 # dumptruckd
 
-> A modular, production-ready database backup daemon
+A modular database backup daemon written in Go. Handles periodic dumps, compression, encryption, upload, verification, notifications, and retention cleanup.
 
-**dumptruckd** is a clean, extensible backup daemon that handles periodic database dumps, compression, and uploads to various storage backends. Built with Go, designed for reliability and simplicity.
+## What it does
 
-## Features
+```
+Cron Trigger -> Pre-Hook -> Dump -> Compress -> Encrypt -> Upload -> Verify -> Post-Hook -> Notify -> Cleanup
+```
 
-- 🔌 **Pluggable Architecture**: Modular adapters for databases, compressors, uploaders, and notifiers
-- 📅 **Cron-based Scheduling**: Flexible scheduling using cron expressions with concurrency limits
-- 🗄️ **Multiple Database Support**: PostgreSQL (with more coming)
-- 🗜️ **Compression**: Gzip support (zstd, xz coming)
-- ☁️ **Multiple Storage Backends**: S3, local filesystem (more coming)
-- 🔔 **Notifications**: Slack, webhooks (email, Discord coming)
-- � **Retry with Backoff**: Configurable exponential backoff for transient failures
-- 📊 **Health & Metrics**: `/healthz` and `/metrics` (Prometheus format) endpoints
-- 📝 **Structured Logging**: JSON or text output via `log/slog`, configurable level and destination
-- �🐳 **Docker Ready**: Containerized with minimal dependencies
-- 🔒 **Security First**: Credentials via environment variables, no secrets in config
-- 🛑 **Graceful Shutdown**: Waits for in-progress backups to complete on SIGTERM
+Each stage is an interface. Swap backends by implementing the interface and adding a case to the factory function.
 
-## Quick Start
+## Supported backends
 
-### Installation
+| Stage | Backends |
+|-------|----------|
+| Database | PostgreSQL, MySQL |
+| Compression | gzip, none (passthrough) |
+| Encryption | age, GPG, none |
+| Upload | S3 (and S3-compatible: R2, B2, MinIO), local filesystem |
+| Notification | Slack, webhook, none |
+
+## Install
 
 ```bash
-# From source
-go install github.com/Saadlulu/dumptruckd/cmd/dumptruckd@latest
+# Homebrew
+brew tap Saadlulu/tap
+brew install dumptruckd
 
-# Or build from source
+# APT (Debian/Ubuntu)
+curl -fsSL https://saadlulu.github.io/dumptruckd/setup.sh | sudo bash
+sudo apt-get install dumptruckd
+
+# From source
 git clone https://github.com/Saadlulu/dumptruckd
 cd dumptruckd
 make build
+
+# Docker
+docker pull ghcr.io/saadlulu/dumptruckd:latest
 ```
 
-### Configuration
+## Quick start
 
-dumptruckd supports two configuration approaches:
-
-#### Option 1: Modular Configuration (Recommended)
-
-1. Copy the modular config template:
-```bash
-cp config/dumptruckd.toml.example config/dumptruckd.toml
-```
-
-2. Edit component files in `config/config.d/`:
-   - `databases.toml` - Define database connections
-   - `uploaders.toml` - Define upload destinations (S3, local, etc.)
-   - `compressors.toml` - Define compression methods
-   - `retention.toml` - Define retention policies
-   - `backups.toml` - Define backup jobs that reference components
-
-3. Set environment variables:
-```bash
-export DB_PASSWORD="your-db-password"
-export AWS_ACCESS_KEY_ID="your-access-key"
-export AWS_SECRET_ACCESS_KEY="your-secret-key"
-```
-
-#### Option 2: Single File Configuration
+### Option 1: TOML config file
 
 ```bash
 cp config/example-single-file.toml config/dumptruckd.toml
-```
+# Edit with your settings
 
-Edit with your settings, set environment variables, done.
+export DB_PASSWORD="your-db-password"
+export AWS_ACCESS_KEY_ID="your-key"
+export AWS_SECRET_ACCESS_KEY="your-secret"
 
-### Run
-
-```bash
 dumptruckd -config config/dumptruckd.toml
 ```
 
-### Test Configuration
+### Option 2: Environment variables only (no config file)
 
-Validate your setup before running backups:
+Set `DUMPTRUCKD_DB_TYPE` and dumptruckd builds a single backup job from env vars. This is the recommended mode for Docker and Kamal deployments.
 
 ```bash
-dumptruckd -test -config config/dumptruckd.toml
+export DUMPTRUCKD_DB_TYPE=postgres
+export DUMPTRUCKD_DB_HOST=localhost
+export DUMPTRUCKD_DB_NAME=myapp_production
+export DUMPTRUCKD_DB_USER=backup_user
+export DUMPTRUCKD_UPLOAD_TYPE=s3
+export DUMPTRUCKD_S3_BUCKET=my-backups
+export DUMPTRUCKD_S3_REGION=us-east-1
+export DB_PASSWORD=your-db-password
+export AWS_ACCESS_KEY_ID=your-key
+export AWS_SECRET_ACCESS_KEY=your-secret
+
+dumptruckd
 ```
 
-This tests database connections, compression, uploads (with verify + cleanup), notifications, and runs a full pipeline dry-run for each backup job.
+Defaults: schedule `0 */6 * * *` (every 6 hours), compression `gzip`, backup name = database name.
 
-## Configuration Reference
+## CLI flags
 
-### Logging
-
-```toml
-[logging]
-level = "info"       # debug, info, warn, error
-format = "text"      # text, json
-output = "stdout"    # stdout, stderr, or a file path
+```
+dumptruckd -config <path>       Run as daemon with TOML config
+dumptruckd                      Run as daemon with env-var config (or auto-discover config file)
+dumptruckd -once                Run all backups once and exit (no scheduler)
+dumptruckd -run-now             Run all backups immediately and exit
+dumptruckd -dry-run             Validate config, test adapters, check S3 access, send test notification
+dumptruckd -test                Run built-in config tests (DB connection, upload round-trip, etc.)
+dumptruckd -dump-config         Print the final resolved config as TOML and exit
+dumptruckd -version             Print version and exit
+dumptruckd restore --backup <name> --latest          Restore most recent backup
+dumptruckd restore --backup <name> --timestamp <ts>  Restore specific backup
 ```
 
-### Health & Metrics
+`--once` is designed for single-shot container execution. No scheduler, no watchdog, no health server. Exit 0 on success, exit 1 on failure.
 
-```toml
+`--dry-run` validates config, creates all adapters, runs S3 HeadBucket, sends a test notification, and prints the next 3 scheduled run times per backup.
+
+`--dump-config` loads, merges, and resolves all config (includes, config.d/, references, defaults) then prints the final result as TOML. Useful for debugging config at 2am.
+
+## Kamal deployment
+
+dumptruckd works as a Kamal accessory with zero config files. Full guide: [docs/DOCKER-KAMAL.md](docs/DOCKER-KAMAL.md)
+
+Minimal `deploy.yml` snippet:
+
+```yaml
+network: myapp-private
+
+accessories:
+  db:
+    image: postgres:16-alpine
+    host: 1.2.3.4
+    env:
+      clear:
+        POSTGRES_DB: myapp_production
+        POSTGRES_USER: myapp
+      secret:
+        - POSTGRES_PASSWORD
+    directories:
+      - data:/var/lib/postgresql/data
+    options:
+      network: myapp-private
+
+  dumptruckd:
+    image: ghcr.io/saadlulu/dumptruckd:latest
+    host: 1.2.3.4
+    env:
+      clear:
+        DUMPTRUCKD_DB_TYPE: postgres
+        DUMPTRUCKD_DB_HOST: myapp-db
+        DUMPTRUCKD_DB_PORT: "5432"
+        DUMPTRUCKD_DB_NAME: myapp_production
+        DUMPTRUCKD_DB_USER: myapp
+        DUMPTRUCKD_UPLOAD_TYPE: s3
+        DUMPTRUCKD_S3_BUCKET: myapp-backups
+        DUMPTRUCKD_S3_REGION: us-east-1
+        DUMPTRUCKD_SCHEDULE: "0 */6 * * *"
+        DUMPTRUCKD_RETENTION_DAYS: "30"
+        DUMPTRUCKD_RETENTION_KEEP_LAST: "10"
+        DUMPTRUCKD_HEALTH_ENABLED: "true"
+        DUMPTRUCKD_HEALTH_PORT: "8080"
+      secret:
+        - DB_PASSWORD
+        - AWS_ACCESS_KEY_ID
+        - AWS_SECRET_ACCESS_KEY
+    options:
+      network: myapp-private
+```
+
+Both containers must share a Docker network. Kamal names the db container `myapp-db`, so `DUMPTRUCKD_DB_HOST: myapp-db` resolves via Docker DNS.
+
+On-demand backup from Kamal:
+
+```bash
+kamal accessory exec dumptruckd --cmd "dumptruckd --once"
+```
+
+Restore from Kamal:
+
+```bash
+kamal accessory exec dumptruckd --cmd "dumptruckd restore --backup myapp_production --latest"
+```
+
+## Docker (standalone)
+
+```bash
+# As a daemon with config file
+docker run -d \
+  --name dumptruckd \
+  --restart unless-stopped \
+  -v /etc/dumptruckd:/app/config \
+  --env-file /etc/dumptruckd/.env \
+  ghcr.io/saadlulu/dumptruckd:latest \
+  -config /app/config/dumptruckd.toml
+
+# As a daemon with env vars only
+docker run -d \
+  --name dumptruckd \
+  --restart unless-stopped \
+  -e DUMPTRUCKD_DB_TYPE=postgres \
+  -e DUMPTRUCKD_DB_HOST=db \
+  -e DUMPTRUCKD_DB_NAME=myapp \
+  -e DUMPTRUCKD_DB_USER=backup \
+  -e DUMPTRUCKD_UPLOAD_TYPE=local \
+  -e DUMPTRUCKD_UPLOAD_PATH=/var/backups \
+  -e DB_PASSWORD=secret \
+  -v /var/backups:/var/backups \
+  ghcr.io/saadlulu/dumptruckd:latest
+
+# One-shot backup (e.g., from cron or CI)
+docker run --rm \
+  --env-file /etc/dumptruckd/.env \
+  ghcr.io/saadlulu/dumptruckd:latest \
+  --once
+```
+
+## Features
+
+### Encryption
+
+Encrypt backups before upload using age or GPG:
+
+```bash
+# TOML
+[backup.encrypt]
+type = "age"
+
+# Env vars
+export DUMPTRUCKD_ENCRYPT_TYPE=age
+export DUMPTRUCKD_AGE_RECIPIENT="age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+The `age` or `gpg` binary must be in PATH. Encrypted files get `.age` or `.gpg` appended. The unencrypted file is removed after encryption.
+
+### Backup verification
+
+Download and validate the backup after upload:
+
+```bash
+# TOML
+verify = true
+
+# Env vars
+export DUMPTRUCKD_VERIFY=true
+```
+
+Downloads the uploaded file, decompresses, and checks the format (PostgreSQL header validation). Verification failure sends a notification but does not mark the backup as failed -- the data is already uploaded.
+
+### Size anomaly detection
+
+Track backup sizes and alert on significant deviations:
+
+```bash
+# TOML
+size_alert_threshold = 50  # percentage
+
+# Env vars
+export DUMPTRUCKD_SIZE_ALERT_THRESHOLD=50
+```
+
+Maintains a rolling window of the last 10 sizes per job. Alerts when deviation exceeds the threshold. Skips detection until 3 backups are recorded.
+
+### Pre/post hooks
+
+Run custom commands before and after each backup:
+
+```bash
+# TOML
+[backup.hooks]
+pre = "/usr/local/bin/pre-backup.sh"
+post = "/usr/local/bin/post-backup.sh"
+
+# Env vars
+export DUMPTRUCKD_HOOK_PRE="/usr/local/bin/pre-backup.sh"
+export DUMPTRUCKD_HOOK_POST="/usr/local/bin/post-backup.sh"
+```
+
+Hooks receive `DUMPTRUCKD_HOOK_BACKUP_NAME`, `DUMPTRUCKD_HOOK_STATUS`, and `DUMPTRUCKD_HOOK_FILE_PATH` as environment variables. Pre-hook failure aborts the backup. Post-hook failure logs a warning. 60-second timeout.
+
+### Retention
+
+Keep backups by age, count, or both:
+
+```bash
+# TOML
+[backup.retention]
+days = 30
+keep_last = 10
+
+# Env vars
+export DUMPTRUCKD_RETENTION_DAYS=30
+export DUMPTRUCKD_RETENTION_KEEP_LAST=10
+```
+
+Union policy: a file is kept if it satisfies either condition. Local filesystem only -- for S3, use lifecycle policies.
+
+### Health and metrics
+
+```bash
+# TOML
 [health]
 enabled = true
 port = 8080
+
+# Env vars
+export DUMPTRUCKD_HEALTH_ENABLED=true
+export DUMPTRUCKD_HEALTH_PORT=8080
 ```
 
 Endpoints:
-- `GET /healthz` — JSON status with per-backup run stats (last run, success/failure counts, duration)
-- `GET /metrics` — Prometheus-format metrics (`dumptruckd_up`, `dumptruckd_backup_runs_total`, `dumptruckd_backup_failures_total`)
+- `GET /healthz` -- JSON with per-backup status (last run, success/failure counts, duration, size, consecutive failures). Status is `degraded` when any backup has 3+ consecutive failures.
+- `GET /metrics` -- Prometheus format (`dumptruckd_up`, `dumptruckd_backup_runs_total`, `dumptruckd_backup_failures_total`).
 
-### Backup Jobs
+Optional auth: set `HEALTH_BEARER_TOKEN` env var or `token` in config.
+
+### S3-compatible storage
+
+Use Cloudflare R2, Backblaze B2, MinIO, or any S3-compatible service:
+
+```bash
+export DUMPTRUCKD_S3_ENDPOINT=https://your-account.r2.cloudflarestorage.com
+export DUMPTRUCKD_S3_REGION=auto
+```
+
+When a custom endpoint is set, path-style addressing is used and server-side encryption is skipped automatically.
+
+### Structured logging
 
 ```toml
-[[backup]]
-name = "my_backup"
-schedule = "0 */6 * * *"
-database_ref = "prod_postgres"
-compress_ref = "fast"
-upload_ref = "prod_s3"
-retention_ref = "ten_days"
-
-[backup.notify]
-type = "slack"
-  [backup.notify.slack]
-  webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+[logging]
+level = "info"    # debug, info, warn, error
+format = "text"   # text, json
+output = "stdout" # stdout, stderr, or a file path
 ```
 
-Components can be referenced by name or defined inline. See `config/example-single-file.toml` for full examples.
+### Retry with backoff
 
-### Environment Variables
+Transient failures (network blips, temporary DB unavailability) are retried with exponential backoff and jitter. Default: 3 retries, 2-second base delay.
 
-| Variable | Used By | Required |
+## Environment variable reference
+
+### Config variables (env-var mode)
+
+| Variable | Default | Required |
 |----------|---------|----------|
-| `DB_PASSWORD` or `DB_PASSWORD_{DBNAME}` | PostgreSQL dumper | Yes |
-| `AWS_ACCESS_KEY_ID` | S3 uploader | For S3 uploads |
-| `AWS_SECRET_ACCESS_KEY` | S3 uploader | For S3 uploads |
-| `SLACK_WEBHOOK_URL` | Slack notifier | If Slack configured |
+| `DUMPTRUCKD_DB_TYPE` | -- | Yes |
+| `DUMPTRUCKD_DB_HOST` | -- | Yes |
+| `DUMPTRUCKD_DB_PORT` | 5432/3306 | No |
+| `DUMPTRUCKD_DB_NAME` | -- | Yes |
+| `DUMPTRUCKD_DB_USER` | -- | Yes |
+| `DUMPTRUCKD_UPLOAD_TYPE` | -- | Yes |
+| `DUMPTRUCKD_S3_BUCKET` | -- | When S3 |
+| `DUMPTRUCKD_S3_REGION` | us-east-1 | No |
+| `DUMPTRUCKD_S3_PREFIX` | -- | No |
+| `DUMPTRUCKD_S3_ENDPOINT` | -- | No |
+| `DUMPTRUCKD_UPLOAD_PATH` | /var/backups/dumptruckd | No |
+| `DUMPTRUCKD_COMPRESS_TYPE` | gzip | No |
+| `DUMPTRUCKD_SCHEDULE` | 0 */6 * * * | No |
+| `DUMPTRUCKD_BACKUP_NAME` | DB_NAME value | No |
+| `DUMPTRUCKD_NOTIFY_TYPE` | -- | No |
+| `DUMPTRUCKD_RETENTION_DAYS` | -- | No |
+| `DUMPTRUCKD_RETENTION_KEEP_LAST` | -- | No |
+| `DUMPTRUCKD_ENCRYPT_TYPE` | -- | No |
+| `DUMPTRUCKD_VERIFY` | false | No |
+| `DUMPTRUCKD_SIZE_ALERT_THRESHOLD` | 50 | No |
+| `DUMPTRUCKD_HOOK_PRE` | -- | No |
+| `DUMPTRUCKD_HOOK_POST` | -- | No |
+| `DUMPTRUCKD_LOG_LEVEL` | info | No |
+| `DUMPTRUCKD_LOG_FORMAT` | text | No |
+| `DUMPTRUCKD_HEALTH_ENABLED` | false | No |
+| `DUMPTRUCKD_HEALTH_PORT` | 8080 | No |
 
-## Docker
+### Credential variables (both modes)
 
-```bash
-docker build -t dumptruckd .
+| Variable | Used by |
+|----------|---------|
+| `DB_PASSWORD` | Database dump/restore (takes precedence) |
+| `DB_PASSWORD_{DBNAME}` | Database dump/restore (fallback) |
+| `AWS_ACCESS_KEY_ID` | S3 uploader |
+| `AWS_SECRET_ACCESS_KEY` | S3 uploader |
+| `SLACK_WEBHOOK_URL` | Slack notifier (fallback when not in config) |
+| `HEALTH_BEARER_TOKEN` | Health endpoint auth |
+| `DUMPTRUCKD_AGE_RECIPIENT` | age encryption |
+| `DUMPTRUCKD_GPG_RECIPIENT` | GPG encryption |
 
-docker run --rm \
-  -v $(pwd)/config:/app/config \
-  -e AWS_ACCESS_KEY_ID=xxx \
-  -e AWS_SECRET_ACCESS_KEY=xxx \
-  -e DB_PASSWORD=xxx \
-  dumptruckd
-```
-
-## Development
-
-```bash
-make deps          # Download dependencies
-make build         # Build binary
-make test          # Run tests
-make test-coverage # Tests with coverage report
-make lint          # Run linters
-make fmt           # Format code
-make vet           # Run go vet
-```
-
-## Project Structure
+## Project structure
 
 ```
 dumptruckd/
 ├── cmd/dumptruckd/      # Entry point, CLI flags, graceful shutdown
 ├── pkg/
-│   ├── config/          # TOML config loading, validation, reference resolution
-│   ├── scheduler/       # Cron scheduling with concurrency limits and graceful drain
-│   ├── dump/            # Database dump adapters (Dumper, TestDumper interfaces)
+│   ├── config/          # TOML config loading, env-var config, validation
+│   ├── scheduler/       # Cron scheduling, concurrency limits, graceful drain
+│   ├── dump/            # Database dump adapters (Dumper interface)
 │   ├── compress/        # Compression adapters (Compressor interface)
-│   ├── upload/          # Upload adapters (Uploader, VerifiableUploader interfaces)
+│   ├── encrypt/         # Encryption adapters (Encryptor interface)
+│   ├── upload/          # Upload adapters (Uploader interface)
+│   ├── verify/          # Post-upload backup verification
 │   ├── notify/          # Notification adapters (Notifier interface)
 │   ├── retention/       # Local filesystem retention cleanup
 │   ├── health/          # Health check and Prometheus metrics server
+│   ├── hooks/           # Pre/post backup hook execution
+│   ├── sizetrack/       # Backup size tracking and anomaly detection
+│   ├── watchdog/        # Stale backup detection and alerting
+│   ├── restore/         # Backup restore pipeline
 │   └── test/            # Built-in configuration test framework
 ├── internal/
+│   ├── credentials/     # Secure credential retrieval from env vars
+│   ├── fileops/         # Shared file operations (decrypt, decompress)
 │   ├── logger/          # Structured logging (log/slog) setup
-│   ├── retry/           # Exponential backoff retry logic
-│   └── utils/           # Shared path and timestamp utilities
+│   ├── retry/           # Exponential backoff with jitter
+│   └── utils/           # Path sanitization and timestamp utilities
 ├── config/              # Configuration templates and examples
+├── docs/                # Deployment, configuration, Docker/Kamal guides
 └── examples/            # Systemd service file
 ```
 
-## Architecture
+## Documentation
 
-The backup pipeline follows a clean adapter pattern:
+- [Configuration Guide](docs/CONFIGURATION.md) -- TOML config, env vars, all options
+- [Docker and Kamal Guide](docs/DOCKER-KAMAL.md) -- Complete Kamal accessory setup
+- [Deployment Guide](docs/DEPLOYMENT.md) -- Systemd, Docker, security checklist
+- [Testing Guide](docs/TESTING.md) -- Built-in config tester
+- [Building](docs/BUILDING.md) -- Build from source
 
+## Development
+
+```bash
+go test ./...          # Run tests
+go test -cover ./...   # With coverage
+go vet ./...           # Catch common mistakes
+gofmt -w .             # Format code
+go mod tidy            # Sync dependencies
+make build             # Build binary
 ```
-Cron Trigger → Dump (Dumper) → Compress (Compressor) → Upload (Uploader) → Notify (Notifier) → Cleanup
-```
 
-Each stage is an interface. New backends are added by implementing the interface and registering in the factory function. The scheduler uses dependency injection for all adapter factories, making it fully testable with fakes.
+## Security
+
+All credentials come from environment variables. No secrets in config files. Database dump commands run with minimal environments (only PATH, HOME, and credential files). Backup files are written with 0600 permissions. Upload paths are sanitized against directory traversal. Webhook URLs require HTTPS (Slack) or explicit opt-in for HTTP.
 
 ## License
 
-MIT License - see LICENSE file for details
+MIT

@@ -71,7 +71,7 @@ func TestNewS3Uploader_ValidConfig(t *testing.T) {
 	}
 }
 
-func TestS3Uploader_ImplementsVerifiableUploader(t *testing.T) {
+func TestS3Uploader_ImplementsUploader(t *testing.T) {
 	os.Setenv("AWS_ACCESS_KEY_ID", "test")
 	os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
 	defer os.Unsetenv("AWS_ACCESS_KEY_ID")
@@ -82,5 +82,5 @@ func TestS3Uploader_ImplementsVerifiableUploader(t *testing.T) {
 		t.Fatalf("NewS3Uploader() error = %v", err)
 	}
 
-	var _ VerifiableUploader = uploader
+	var _ Uploader = uploader
 }

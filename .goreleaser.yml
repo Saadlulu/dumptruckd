@@ -129,19 +129,5 @@ nfpms:
     scripts:
       postinstall: packaging/postinstall.sh
 
-# Docker images
-dockers:
-  - goos: linux
-    goarch: amd64
-    image_templates:
-      - "ghcr.io/saadlulu/dumptruckd:{{ .Tag }}"
-      - "ghcr.io/saadlulu/dumptruckd:latest"
-    dockerfile: Dockerfile.goreleaser
-    extra_files:
-      - config/example-single-file.toml
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.Commit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
+# Docker images are built by .github/workflows/docker-publish.yml with multi-arch
+# support (amd64 + arm64). Do not add a dockers section here to avoid tag conflicts.

@@ -3,6 +3,7 @@ package dump
 import (
 	"testing"
 
+	"github.com/Saadlulu/dumptruckd/internal/credentials"
 	"github.com/Saadlulu/dumptruckd/pkg/config"
 )
 
@@ -15,43 +16,25 @@ func TestNewDumper(t *testing.T) {
 	}{
 		{
 			name:    "valid postgres",
-			cfg:     config.DatabaseConfig{Type: "postgres", Host: "localhost", Database: "testdb"},
+			cfg:     config.DatabaseConfig{Type: "postgres", Host: "localhost", Database: "testdb", Username: "user"},
 			wantErr: false,
 		},
 		{
 			name:    "unknown type",
 			cfg:     config.DatabaseConfig{Type: "oracle"},
 			wantErr: true,
-			errMsg:  "unknown database type",
+			errMsg:  "unknown or unsupported",
 		},
 		{
 			name:    "empty type",
 			cfg:     config.DatabaseConfig{},
 			wantErr: true,
-			errMsg:  "unknown database type",
+			errMsg:  "unknown or unsupported",
 		},
 		{
 			name:    "valid mysql",
-			cfg:     config.DatabaseConfig{Type: "mysql", Host: "localhost", Database: "testdb"},
+			cfg:     config.DatabaseConfig{Type: "mysql", Host: "localhost", Database: "testdb", Username: "user"},
 			wantErr: false,
-		},
-		{
-			name:    "mongodb not implemented",
-			cfg:     config.DatabaseConfig{Type: "mongodb"},
-			wantErr: true,
-			errMsg:  "not yet implemented",
-		},
-		{
-			name:    "sqlite not implemented",
-			cfg:     config.DatabaseConfig{Type: "sqlite"},
-			wantErr: true,
-			errMsg:  "not yet implemented",
-		},
-		{
-			name:    "redis not implemented",
-			cfg:     config.DatabaseConfig{Type: "redis"},
-			wantErr: true,
-			errMsg:  "not yet implemented",
 		},
 	}
 
@@ -86,7 +69,7 @@ func searchString(s, substr string) bool {
 func TestGetDBPassword_FromDBPassword(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "secret123")
 
-	password, err := getDBPassword("testdb", "postgres")
+	password, err := credentials.GetDBPassword("testdb", "postgres")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -99,7 +82,7 @@ func TestGetDBPassword_FallbackToNamedVar(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "")
 	t.Setenv("DB_PASSWORD_TESTDB", "named_secret")
 
-	password, err := getDBPassword("testdb", "postgres")
+	password, err := credentials.GetDBPassword("testdb", "postgres")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -108,23 +91,52 @@ func TestGetDBPassword_FallbackToNamedVar(t *testing.T) {
 	}
 }
 
+func TestGetDBPassword_BothSet_UnsuffixedWins(t *testing.T) {
+	t.Setenv("DB_PASSWORD", "global_secret")
+	t.Setenv("DB_PASSWORD_TESTDB", "named_secret")
+
+	password, err := credentials.GetDBPassword("testdb", "postgres")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if password != "global_secret" {
+		t.Errorf("expected DB_PASSWORD to take precedence, got %q", password)
+	}
+}
+
 func TestGetDBPassword_MissingBothVars(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "")
 	t.Setenv("DB_PASSWORD_TESTDB", "")
 
-	_, err := getDBPassword("testdb", "postgres")
+	_, err := credentials.GetDBPassword("testdb", "postgres")
 	if err == nil {
 		t.Fatal("expected error when both env vars are missing, got nil")
 	}
 	if !contains(err.Error(), "DB_PASSWORD") {
 		t.Errorf("expected error to mention DB_PASSWORD, got %q", err.Error())
 	}
+	if !contains(err.Error(), "DB_PASSWORD_TESTDB") {
+		t.Errorf("expected error to mention DB_PASSWORD_TESTDB, got %q", err.Error())
+	}
+}
+
+func TestGetDBPassword_MissingBothVars_SanitizedName(t *testing.T) {
+	t.Setenv("DB_PASSWORD", "")
+	t.Setenv("DB_PASSWORD_TRACEBIN_PRODUCTION", "")
+
+	_, err := credentials.GetDBPassword("tracebin_production", "postgres")
+	if err == nil {
+		t.Fatal("expected error when both env vars are missing, got nil")
+	}
+	if !contains(err.Error(), "DB_PASSWORD_TRACEBIN_PRODUCTION") {
+		t.Errorf("expected error to mention DB_PASSWORD_TRACEBIN_PRODUCTION, got %q", err.Error())
+	}
 }
 
 func TestGetDBPassword_RejectsNewlineForPostgres(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "pass\nword")
 
-	_, err := getDBPassword("testdb", "postgres")
+	_, err := credentials.GetDBPassword("testdb", "postgres")
 	if err == nil {
 		t.Fatal("expected error for password containing newline with postgres, got nil")
 	}
@@ -136,7 +148,7 @@ func TestGetDBPassword_RejectsNewlineForPostgres(t *testing.T) {
 func TestGetDBPassword_RejectsColonForPostgres(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "pass:word")
 
-	_, err := getDBPassword("testdb", "postgres")
+	_, err := credentials.GetDBPassword("testdb", "postgres")
 	if err == nil {
 		t.Fatal("expected error for password containing colon with postgres, got nil")
 	}
@@ -148,7 +160,7 @@ func TestGetDBPassword_RejectsColonForPostgres(t *testing.T) {
 func TestGetDBPassword_AllowsColonForMySQL(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "pass:word")
 
-	password, err := getDBPassword("testdb", "mysql")
+	password, err := credentials.GetDBPassword("testdb", "mysql")
 	if err != nil {
 		t.Fatalf("expected colon to be allowed for mysql, got error: %v", err)
 	}
@@ -160,7 +172,7 @@ func TestGetDBPassword_AllowsColonForMySQL(t *testing.T) {
 func TestGetDBPassword_RejectsNewlineForMySQL(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "pass\nword")
 
-	_, err := getDBPassword("testdb", "mysql")
+	_, err := credentials.GetDBPassword("testdb", "mysql")
 	if err == nil {
 		t.Fatal("expected error for password containing newline with mysql, got nil")
 	}
@@ -172,7 +184,7 @@ func TestGetDBPassword_RejectsNewlineForMySQL(t *testing.T) {
 func TestGetDBPassword_RejectsBackslashForBoth(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "pass\\word")
 
-	_, err := getDBPassword("testdb", "postgres")
+	_, err := credentials.GetDBPassword("testdb", "postgres")
 	if err == nil {
 		t.Fatal("expected error for password containing backslash with postgres, got nil")
 	}
@@ -180,7 +192,7 @@ func TestGetDBPassword_RejectsBackslashForBoth(t *testing.T) {
 		t.Errorf("expected error about invalid characters for postgres, got %q", err.Error())
 	}
 
-	_, err = getDBPassword("testdb", "mysql")
+	_, err = credentials.GetDBPassword("testdb", "mysql")
 	if err == nil {
 		t.Fatal("expected error for password containing backslash with mysql, got nil")
 	}
@@ -193,7 +205,7 @@ func TestGetDBPassword_SanitizesDBName(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "")
 	t.Setenv("DB_PASSWORD_MY_DB", "sanitized_secret")
 
-	password, err := getDBPassword("my-db", "postgres")
+	password, err := credentials.GetDBPassword("my-db", "postgres")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
