@@ -385,7 +385,10 @@ func runRestoreSubcommand() {
 	latest := restoreCmd.Bool("latest", false, "Restore the latest backup")
 	timestamp := restoreCmd.String("timestamp", "", "Restore backup at specific timestamp")
 	configPath := restoreCmd.String("config", "", "Path to configuration file")
-	restoreCmd.Parse(os.Args[2:])
+	if err := restoreCmd.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	if *backupName == "" {
 		fmt.Fprintln(os.Stderr, "Error: --backup is required")
