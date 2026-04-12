@@ -3,6 +3,7 @@ package dump
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 
@@ -14,6 +15,7 @@ import (
 // PostgresDumper creates database dumps using pg_dump.
 type PostgresDumper struct {
 	cfg config.DatabaseConfig
+	log *slog.Logger
 }
 
 // NewPostgresDumper creates a new PostgreSQL dumper with the given config.
@@ -27,7 +29,7 @@ func NewPostgresDumper(cfg config.DatabaseConfig) (*PostgresDumper, error) {
 	if cfg.Username == "" {
 		return nil, fmt.Errorf("postgres username is required")
 	}
-	return &PostgresDumper{cfg: cfg}, nil
+	return &PostgresDumper{cfg: cfg, log: slog.Default()}, nil
 }
 
 // Dump creates a full database dump.
@@ -111,10 +113,26 @@ func (d *PostgresDumper) runPgDump(ctx context.Context, schemaOnly bool) (string
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
 	}
 
+	if !schemaOnly {
+		d.log.Info("pg_dump started, this may take several minutes for large databases",
+			"database", d.cfg.Database, "host", d.cfg.Host)
+		monitor := newProgressMonitor(dumpFile, d.log, d.cfg.Database, "pg_dump")
+		stopMonitor := monitor.start(ctx)
+		defer stopMonitor()
+	}
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		os.Remove(dumpFile)
 		return "", fmt.Errorf("pg_dump failed: %w\nOutput: %s", err, string(output))
+	}
+
+	// Log final dump file size
+	if info, statErr := os.Stat(dumpFile); statErr == nil && !schemaOnly {
+		d.log.Info("pg_dump completed",
+			"database", d.cfg.Database,
+			"size", formatBytes(info.Size()),
+		)
 	}
 
 	return dumpFile, nil

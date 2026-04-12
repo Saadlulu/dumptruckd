@@ -229,13 +229,33 @@ env:
 
 ## On-Demand Backups
 
-Run a single backup without starting the scheduler:
+Run a single backup without starting the scheduler. Use `-d` (detached) to avoid blocking your terminal during the dump phase, then tail the logs:
+
+```bash
+# Trigger the backup (returns immediately)
+ssh root@your-server "docker exec -d your-service-dumptruckd dumptruckd -once"
+
+# Watch progress in real-time (Ctrl+C when done)
+ssh root@your-server "docker logs -f your-service-dumptruckd --since 1m"
+```
+
+You'll see progress logs every 5 seconds showing the dump file size growing:
+
+```
+level=INFO msg="pg_dump started, this may take several minutes for large databases" database=myapp_production host=myapp-db
+level=INFO msg="pg_dump in progress" database=myapp_production size="124.5 MB" elapsed=5s
+level=INFO msg="pg_dump in progress" database=myapp_production size="298.1 MB" elapsed=10s
+level=INFO msg="pg_dump completed" database=myapp_production size="1.2 GB"
+level=INFO msg="backup completed" backup=myapp_production duration=3m42s path=/var/backups/myapp_production/2026/04/12/dump_myapp_production_20260412_060000_1234567890.sql.gz
+```
+
+Alternatively, if you want to block and wait for the result:
 
 ```bash
 kamal accessory exec dumptruckd --cmd "dumptruckd --once"
 ```
 
-This runs all configured backup jobs once and exits. Exit code 0 means all backups succeeded; exit code 1 means at least one failed.
+Exit code 0 means all backups succeeded; exit code 1 means at least one failed.
 
 ## Restore
 
@@ -290,6 +310,20 @@ If you're on an older image, override CMD in your Kamal config:
 ```
 
 Or upgrade to v0.2.1+.
+
+### "permission denied" writing to /var/backups
+
+```
+create destination directory: mkdir /var/backups/myapp_production: permission denied
+```
+
+The dumptruckd container runs as uid 1000 but the mounted volume directory was created as root by Kamal/Docker. Fix the ownership on the host:
+
+```bash
+ssh root@your-server "chown -R 1000:1000 your-service-dumptruckd/myapp_backups"
+```
+
+As of v0.2.2, the Docker image pre-creates `/var/backups/dumptruckd` with correct ownership. If you mount a volume to a different path (e.g., `/var/backups`), you may still need to fix permissions on the host directory after Kamal creates it.
 
 ### "connection refused" or DNS errors
 

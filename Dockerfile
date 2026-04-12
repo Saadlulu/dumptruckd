@@ -49,8 +49,12 @@ COPY --from=builder /bin/dumptruckd /usr/local/bin/dumptruckd
 # Copy example config
 COPY config/example-single-file.toml /app/config/example.toml
 
-# Create config directory and set ownership
-RUN mkdir -p /app/config && chown -R dumptruckd:dumptruckd /app
+# Create config and backup directories with correct ownership.
+# /var/backups is the default DUMPTRUCKD_UPLOAD_PATH for local uploads.
+# Pre-creating it avoids permission errors when Docker volumes are mounted
+# (Kamal/Docker create host dirs as root, but the container runs as uid 1000).
+RUN mkdir -p /app/config /var/backups/dumptruckd && \
+    chown -R dumptruckd:dumptruckd /app /var/backups/dumptruckd
 
 USER dumptruckd
 

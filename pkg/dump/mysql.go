@@ -3,6 +3,7 @@ package dump
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 
@@ -14,6 +15,7 @@ import (
 // MySQLDumper creates database dumps using mysqldump.
 type MySQLDumper struct {
 	cfg config.DatabaseConfig
+	log *slog.Logger
 }
 
 // NewMySQLDumper creates a new MySQL dumper with the given config.
@@ -27,7 +29,7 @@ func NewMySQLDumper(cfg config.DatabaseConfig) (*MySQLDumper, error) {
 	if cfg.Username == "" {
 		return nil, fmt.Errorf("mysql username is required")
 	}
-	return &MySQLDumper{cfg: cfg}, nil
+	return &MySQLDumper{cfg: cfg, log: slog.Default()}, nil
 }
 
 // Dump creates a full database dump.
@@ -107,10 +109,26 @@ func (d *MySQLDumper) runMySQLDump(ctx context.Context, schemaOnly bool) (string
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
 	}
 
+	if !schemaOnly {
+		d.log.Info("mysqldump started, this may take several minutes for large databases",
+			"database", d.cfg.Database, "host", d.cfg.Host)
+		monitor := newProgressMonitor(dumpFile, d.log, d.cfg.Database, "mysqldump")
+		stopMonitor := monitor.start(ctx)
+		defer stopMonitor()
+	}
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		os.Remove(dumpFile)
 		return "", fmt.Errorf("mysqldump failed: %w\nOutput: %s", err, string(output))
+	}
+
+	// Log final dump file size
+	if info, statErr := os.Stat(dumpFile); statErr == nil && !schemaOnly {
+		d.log.Info("mysqldump completed",
+			"database", d.cfg.Database,
+			"size", formatBytes(info.Size()),
+		)
 	}
 
 	return dumpFile, nil

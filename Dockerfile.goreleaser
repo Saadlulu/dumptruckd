@@ -14,7 +14,8 @@ WORKDIR /app
 COPY dumptruckd /usr/local/bin/dumptruckd
 COPY config/example-single-file.toml /app/config/example.toml
 
-RUN mkdir -p /app/config && chown -R dumptruckd:dumptruckd /app
+RUN mkdir -p /app/config /var/backups/dumptruckd && \
+    chown -R dumptruckd:dumptruckd /app /var/backups/dumptruckd
 
 USER dumptruckd
 
