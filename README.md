@@ -104,11 +104,13 @@ dumptruckd works as a Kamal accessory with zero config files. Full guide: [docs/
 Minimal `deploy.yml` snippet:
 
 ```yaml
+# Top-level network -- applies to all accessories automatically.
+# Do NOT also set options: network: on individual accessories.
 network: myapp-private
 
 accessories:
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     host: 1.2.3.4
     env:
       clear:
@@ -118,8 +120,6 @@ accessories:
         - POSTGRES_PASSWORD
     directories:
       - data:/var/lib/postgresql/data
-    options:
-      network: myapp-private
 
   dumptruckd:
     image: ghcr.io/saadlulu/dumptruckd:latest
@@ -143,11 +143,9 @@ accessories:
         - DB_PASSWORD
         - AWS_ACCESS_KEY_ID
         - AWS_SECRET_ACCESS_KEY
-    options:
-      network: myapp-private
 ```
 
-Both containers must share a Docker network. Kamal names the db container `myapp-db`, so `DUMPTRUCKD_DB_HOST: myapp-db` resolves via Docker DNS.
+Both containers must share a Docker network. The top-level `network:` key handles this -- do not also set `options: network:` on individual accessories or Docker will error with "network specified multiple times". Kamal names the db container `myapp-db`, so `DUMPTRUCKD_DB_HOST: myapp-db` resolves via Docker DNS.
 
 On-demand backup from Kamal:
 

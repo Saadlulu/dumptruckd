@@ -17,7 +17,7 @@ COPY . .
 # Generate go.sum and tidy dependencies
 RUN go mod tidy
 
-# Build binary — TARGETPLATFORM is set automatically by Docker Buildx
+# Build binary -- TARGETPLATFORM is set automatically by Docker Buildx
 ARG TARGETPLATFORM
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -25,12 +25,14 @@ ARG DATE=unknown
 RUN CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
     -o /bin/dumptruckd ./cmd/dumptruckd
 
-# Runtime stage
-FROM alpine:3.20
+# Runtime stage -- Alpine 3.21 for PostgreSQL 17 client support
+FROM alpine:3.21
 
 # Install runtime dependencies
+# postgresql17-client provides pg_dump 17 (required for PG 17 servers)
+# postgresql-client is kept as fallback for PG 16 and earlier
 RUN apk add --no-cache \
-    postgresql-client \
+    postgresql17-client \
     mysql-client \
     ca-certificates \
     tzdata
@@ -52,5 +54,10 @@ RUN mkdir -p /app/config && chown -R dumptruckd:dumptruckd /app
 
 USER dumptruckd
 
+# No default CMD args. When run without arguments, dumptruckd auto-discovers
+# config: searches standard paths first, then falls back to DUMPTRUCKD_*
+# environment variables. This makes env-var-only mode (Kamal, Docker) work
+# without overriding CMD.
+#
+# To use a config file: docker run ... dumptruckd -config /path/to/config.toml
 ENTRYPOINT ["dumptruckd"]
-CMD ["-config", "/app/config/dumptruckd.toml"]

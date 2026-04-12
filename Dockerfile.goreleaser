@@ -1,7 +1,7 @@
-FROM alpine:3.20
+FROM alpine:3.21
 
 RUN apk add --no-cache \
-    postgresql-client \
+    postgresql17-client \
     mysql-client \
     ca-certificates \
     tzdata
@@ -19,4 +19,3 @@ RUN mkdir -p /app/config && chown -R dumptruckd:dumptruckd /app
 USER dumptruckd
 
 ENTRYPOINT ["dumptruckd"]
-CMD ["-config", "/app/config/dumptruckd.toml"]

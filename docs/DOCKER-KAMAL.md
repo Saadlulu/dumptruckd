@@ -1,6 +1,6 @@
 # Docker & Kamal Deployment
 
-This guide covers deploying dumptruckd as a [Kamal](https://kamal-deploy.org/) accessory using Docker. dumptruckd runs entirely from environment variables in this mode — no config files needed.
+This guide covers deploying dumptruckd as a [Kamal](https://kamal-deploy.org/) accessory using Docker. dumptruckd runs entirely from environment variables in this mode -- no config files needed.
 
 ## How It Works
 
@@ -16,15 +16,31 @@ Set `DUMPTRUCKD_DB_HOST` to the database container name:
 DUMPTRUCKD_DB_HOST: myapp-db
 ```
 
-This works because Docker's embedded DNS resolves container names to their internal IP addresses — but only when both containers share a Docker network.
+This works because Docker's embedded DNS resolves container names to their internal IP addresses -- but only when both containers share a Docker network.
 
 ## Shared Docker Network
 
-For hostname resolution to work, the dumptruckd container and the database container **must be on the same Docker network**. Kamal supports this via the `options` key on accessories.
+For hostname resolution to work, the dumptruckd container and the database container must be on the same Docker network.
 
-Without a shared network, dumptruckd cannot resolve the database container name and connections will fail with a DNS error.
+Use Kamal's top-level `network:` key to create a shared network. This automatically attaches all accessories to it. Do not also set `options: network:` on individual accessories -- that causes a "network specified multiple times" error.
 
-The example below creates a network called `myapp-private` and attaches both the database and dumptruckd accessories to it.
+```yaml
+# Top-level -- applies to all containers
+network: myapp-private
+
+accessories:
+  db:
+    image: postgres:17-alpine
+    # No options: network: needed -- top-level network handles it
+    ...
+
+  dumptruckd:
+    image: ghcr.io/saadlulu/dumptruckd:latest
+    # No options: network: needed -- top-level network handles it
+    ...
+```
+
+If you need accessories on different networks, use `options: network:` per-accessory instead of the top-level `network:` key. Do not mix both approaches.
 
 ## Complete Kamal `deploy.yml` Example
 
@@ -46,13 +62,14 @@ registry:
   password:
     - KAMAL_REGISTRY_PASSWORD
 
-# Shared Docker network for container-to-container communication
+# Shared Docker network -- all accessories are attached automatically.
+# Do NOT also set options: network: on individual accessories.
 network: myapp-private
 
 accessories:
-  # ── PostgreSQL Database ──────────────────────────────────
+  # -- PostgreSQL Database --
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     host: 1.2.3.4
     port: "127.0.0.1:5432:5432"
     env:
@@ -63,16 +80,14 @@ accessories:
         - POSTGRES_PASSWORD
     directories:
       - data:/var/lib/postgresql/data
-    options:
-      network: myapp-private
 
-  # ── dumptruckd Backup Daemon ─────────────────────────────
+  # -- dumptruckd Backup Daemon --
   dumptruckd:
     image: ghcr.io/saadlulu/dumptruckd:latest
     host: 1.2.3.4
     env:
       clear:
-        # Database connection — uses the db container name as host
+        # Database connection -- uses the db container name as host
         DUMPTRUCKD_DB_TYPE: postgres
         DUMPTRUCKD_DB_HOST: myapp-db
         DUMPTRUCKD_DB_PORT: "5432"
@@ -103,8 +118,6 @@ accessories:
         - DB_PASSWORD
         - AWS_ACCESS_KEY_ID
         - AWS_SECRET_ACCESS_KEY
-    options:
-      network: myapp-private
 ```
 
 ### Setting Secrets
@@ -120,12 +133,12 @@ AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
 ```
 
-> `DB_PASSWORD` and `POSTGRES_PASSWORD` should be the same value. Postgres uses `POSTGRES_PASSWORD` to set the password; dumptruckd uses `DB_PASSWORD` to connect.
+`DB_PASSWORD` and `POSTGRES_PASSWORD` should be the same value. Postgres uses `POSTGRES_PASSWORD` to set the password; dumptruckd uses `DB_PASSWORD` to connect.
 
 ### Deploy
 
 ```bash
-kamal setup    # First deploy — creates containers, networks, volumes
+kamal setup    # First deploy -- creates containers, networks, volumes
 kamal deploy   # Subsequent deploys
 ```
 
@@ -143,6 +156,34 @@ kamal accessory exec dumptruckd --cmd "dumptruckd --once"
 # Dry-run to validate config, S3 access, and schedule
 kamal accessory exec dumptruckd --cmd "dumptruckd --dry-run"
 ```
+
+## Local Filesystem Backups
+
+If you prefer local backups instead of S3, mount a volume and set the upload type:
+
+```yaml
+  dumptruckd:
+    image: ghcr.io/saadlulu/dumptruckd:latest
+    host: 1.2.3.4
+    env:
+      clear:
+        DUMPTRUCKD_DB_TYPE: postgres
+        DUMPTRUCKD_DB_HOST: myapp-db
+        DUMPTRUCKD_DB_PORT: "5432"
+        DUMPTRUCKD_DB_NAME: myapp_production
+        DUMPTRUCKD_DB_USER: myapp
+        DUMPTRUCKD_UPLOAD_TYPE: local
+        DUMPTRUCKD_UPLOAD_PATH: /var/backups
+        DUMPTRUCKD_RETENTION_DAYS: "30"
+        DUMPTRUCKD_RETENTION_KEEP_LAST: "10"
+        DUMPTRUCKD_VERIFY: "true"
+      secret:
+        - DB_PASSWORD
+    directories:
+      - myapp_backups:/var/backups
+```
+
+Backups are written to the mounted volume at `/var/backups/<backup_name>/YYYY/MM/DD/`.
 
 ## S3-Compatible Storage (R2, B2, MinIO)
 
@@ -212,10 +253,56 @@ kamal accessory exec dumptruckd --cmd "dumptruckd restore --backup myapp_product
 
 ## Troubleshooting
 
-**"connection refused" or DNS errors** — The dumptruckd and database containers are not on the same Docker network. Ensure both accessories have `options: network: myapp-private` (or whatever your network name is).
+### "network specified multiple times"
 
-**"DB_PASSWORD not set"** — Add `DB_PASSWORD` to the `secret` list in the dumptruckd accessory and to `.kamal/secrets`.
+You have both a top-level `network:` key and `options: network:` on an accessory. Use one or the other. If you set `network:` at the top level, remove `options: network:` from all accessories.
 
-**"no backups configured"** — `DUMPTRUCKD_DB_TYPE` is not set. This is the trigger for env-var mode.
+### pg_dump version mismatch
 
-**Backups run but upload fails** — Check `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are in the secrets. For S3-compatible services, verify `DUMPTRUCKD_S3_ENDPOINT` is correct.
+```
+pg_dump: error: aborting because of server version mismatch
+pg_dump: detail: server version: 17.x; pg_dump version: 16.x
+```
+
+The dumptruckd Docker image must include a pg_dump version that matches (or is newer than) your PostgreSQL server. As of v0.2.1, the image ships with pg_dump 17 (Alpine 3.21). If you're on an older dumptruckd image, upgrade:
+
+```bash
+kamal accessory stop dumptruckd
+kamal accessory remove dumptruckd
+kamal accessory boot dumptruckd
+```
+
+Match your Postgres image version to the dumptruckd pg_dump version. If you use `postgres:17-alpine` for your database, use `dumptruckd:latest` (which includes pg_dump 17). If you use `postgres:16-alpine`, dumptruckd v0.1.0 (pg_dump 16) works, or v0.2.1+ (pg_dump 17 is backward-compatible with PG 16 servers).
+
+### "No config file found" loop
+
+The container starts, prints "No config file found", and exits or loops. This means dumptruckd is looking for a TOML config file instead of reading environment variables.
+
+Cause: older dumptruckd images had `CMD ["-config", "/app/config/dumptruckd.toml"]` as the default, which forces config-file mode even when no file exists. As of v0.2.1, the default CMD is empty so dumptruckd auto-discovers env vars.
+
+If you're on an older image, override CMD in your Kamal config:
+
+```yaml
+  dumptruckd:
+    image: ghcr.io/saadlulu/dumptruckd:latest
+    cmd: dumptruckd
+    ...
+```
+
+Or upgrade to v0.2.1+.
+
+### "connection refused" or DNS errors
+
+The dumptruckd and database containers are not on the same Docker network. Ensure you have a top-level `network:` in your `deploy.yml`, or that both accessories share the same `options: network:` value.
+
+### "DB_PASSWORD not set"
+
+Add `DB_PASSWORD` to the `secret` list in the dumptruckd accessory and to `.kamal/secrets`.
+
+### "no backups configured"
+
+`DUMPTRUCKD_DB_TYPE` is not set. This is the trigger for env-var mode.
+
+### Backups run but upload fails
+
+Check `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are in the secrets. For S3-compatible services, verify `DUMPTRUCKD_S3_ENDPOINT` is correct.
