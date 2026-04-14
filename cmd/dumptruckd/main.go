@@ -35,10 +35,16 @@ var (
 )
 
 func main() {
-	// Handle "restore" subcommand before flag.Parse() so it gets its own FlagSet.
-	if len(os.Args) > 1 && os.Args[1] == "restore" {
-		runRestoreSubcommand()
-		return
+	// Handle subcommands before flag.Parse() so they get their own FlagSet.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "restore":
+			runRestoreSubcommand()
+			return
+		case "status":
+			runStatusSubcommand()
+			return
+		}
 	}
 
 	var (
