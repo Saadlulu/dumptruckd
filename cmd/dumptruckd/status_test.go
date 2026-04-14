@@ -222,13 +222,17 @@ func TestFetchHealthStatus_Success(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(healthResp)
+		if err := json.NewEncoder(w).Encode(healthResp); err != nil {
+			t.Logf("failed to encode health response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
 	// Extract port from test server
 	var port int
-	fmt.Sscanf(srv.URL, "http://127.0.0.1:%d", &port)
+	if _, err := fmt.Sscanf(srv.URL, "http://127.0.0.1:%d", &port); err != nil {
+		t.Fatalf("failed to parse test server URL %q: %v", srv.URL, err)
+	}
 
 	cfg := &config.Config{
 		Health: config.HealthConfig{
