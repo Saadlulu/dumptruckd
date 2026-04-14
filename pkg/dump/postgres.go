@@ -113,26 +113,26 @@ func (d *PostgresDumper) runPgDump(ctx context.Context, schemaOnly bool) (string
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
 	}
 
+	var stopMonitor func()
 	if !schemaOnly {
-		d.log.Info("pg_dump started, this may take several minutes for large databases",
-			"database", d.cfg.Database, "host", d.cfg.Host)
+		d.log.Info(fmt.Sprintf("[dump] dumping %s (%s:%d)...", d.cfg.Database, d.cfg.Host, port))
 		monitor := newProgressMonitor(dumpFile, d.log, d.cfg.Database, "pg_dump")
-		stopMonitor := monitor.start(ctx)
-		defer stopMonitor()
+		stopMonitor = monitor.start(ctx)
 	}
 
 	output, err := cmd.CombinedOutput()
+
+	if stopMonitor != nil {
+		stopMonitor()
+	}
+
 	if err != nil {
 		os.Remove(dumpFile)
 		return "", fmt.Errorf("pg_dump failed: %w\nOutput: %s", err, string(output))
 	}
 
-	// Log final dump file size
 	if info, statErr := os.Stat(dumpFile); statErr == nil && !schemaOnly {
-		d.log.Info("pg_dump completed",
-			"database", d.cfg.Database,
-			"size", formatBytes(info.Size()),
-		)
+		d.log.Info(fmt.Sprintf("[dump] completed: %s", formatBytes(info.Size())))
 	}
 
 	return dumpFile, nil

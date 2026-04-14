@@ -229,27 +229,26 @@ env:
 
 ## On-Demand Backups
 
-Run a single backup without starting the scheduler. Use `-d` (detached) to avoid blocking your terminal during the dump phase, then tail the logs:
+Run a single backup and watch progress in real-time:
 
 ```bash
-# Trigger the backup (returns immediately)
-ssh root@your-server "docker exec -d your-service-dumptruckd dumptruckd -once"
-
-# Watch progress in real-time (Ctrl+C when done)
-ssh root@your-server "docker logs -f your-service-dumptruckd --since 1m"
+# Foreground -- blocks until done, shows progress logs directly
+ssh root@your-server "docker exec your-service-dumptruckd dumptruckd -once"
 ```
 
-You'll see progress logs every 5 seconds showing the dump file size growing:
+You'll see progress every 5 seconds:
 
 ```
 level=INFO msg="pg_dump started, this may take several minutes for large databases" database=myapp_production host=myapp-db
 level=INFO msg="pg_dump in progress" database=myapp_production size="124.5 MB" elapsed=5s
 level=INFO msg="pg_dump in progress" database=myapp_production size="298.1 MB" elapsed=10s
 level=INFO msg="pg_dump completed" database=myapp_production size="1.2 GB"
-level=INFO msg="backup completed" backup=myapp_production duration=3m42s path=/var/backups/myapp_production/2026/04/12/dump_myapp_production_20260412_060000_1234567890.sql.gz
+level=INFO msg="backup completed" backup=myapp_production duration=3m42s path=/var/backups/...
 ```
 
-Alternatively, if you want to block and wait for the result:
+Do not use `docker exec -d` (detached) -- the progress logs go to the exec process's stdout, not the container's log stream, so `docker logs` won't show them.
+
+From Kamal (blocks until done):
 
 ```bash
 kamal accessory exec dumptruckd --cmd "dumptruckd --once"

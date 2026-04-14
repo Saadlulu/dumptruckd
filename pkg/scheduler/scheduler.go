@@ -317,28 +317,40 @@ func (s *Scheduler) ValidateAdapters(cfg config.BackupConfig) error {
 }
 
 func (s *Scheduler) runBackup(ctx context.Context, cfg config.BackupConfig) error {
-	s.log.Info("starting backup", "backup", cfg.Name)
+	s.log.Info(fmt.Sprintf("=== backup: %s ===", cfg.Name))
 	startTime := utils.Now()
 
-	// Build hook environment map. Status and file path are updated as the pipeline progresses.
+	// Count total steps for the progress prefix
+	totalSteps := 3 // dump + compress + upload (always present)
+	hasEncrypt := cfg.Encrypt.Type != "" && cfg.Encrypt.Type != "none"
+	if hasEncrypt {
+		totalSteps++
+	}
+	if cfg.Verify {
+		totalSteps++
+	}
+	step := 0
+	nextStep := func() int { step++; return step }
+
+	// Build hook environment map
 	hookEnv := map[string]string{
 		"DUMPTRUCKD_HOOK_BACKUP_NAME": cfg.Name,
 		"DUMPTRUCKD_HOOK_STATUS":      "pending",
 		"DUMPTRUCKD_HOOK_FILE_PATH":   "",
 	}
 
-	// Step 0: Pre-hook — failure aborts backup (Req 11.3)
+	// Pre-hook
 	if cfg.Hooks.Pre != "" {
-		s.log.Info("running pre-hook", "backup", cfg.Name)
+		s.log.Info("[hook] running pre-backup hook...")
 		if err := hooks.RunHook(ctx, cfg.Hooks.Pre, hookEnv, hooks.DefaultTimeout); err != nil {
-			s.log.Error("pre-hook failed, aborting backup", "backup", cfg.Name, "error", err)
-			// Run post-hook even on pre-hook failure (Req 11.2: post runs regardless)
+			s.log.Error("[hook] pre-hook failed, aborting", "error", err)
 			s.runPostHook(ctx, cfg, hookEnv, "failure", "")
 			return fmt.Errorf("pre-hook failed: %w", err)
 		}
 	}
 
 	// Step 1: Dump
+	n := nextStep()
 	dumper, err := s.dumperFactory(cfg.Database)
 	if err != nil {
 		s.runPostHook(ctx, cfg, hookEnv, "failure", "")
@@ -350,7 +362,6 @@ func (s *Scheduler) runBackup(ctx context.Context, cfg config.BackupConfig) erro
 		var dumpErr error
 		dumpFile, dumpErr = dumper.Dump(ctx)
 		if dumpErr != nil && dumpFile != "" {
-			// Clean up temp file from this failed attempt to prevent leaks
 			os.Remove(dumpFile)
 			dumpFile = ""
 		}
@@ -362,13 +373,22 @@ func (s *Scheduler) runBackup(ctx context.Context, cfg config.BackupConfig) erro
 	}
 	defer os.Remove(dumpFile)
 
+	dumpSize := fileSize(dumpFile)
+	_ = n // dump step logged by the dumper itself
+
 	// Step 2: Compress
+	n = nextStep()
 	compressor, err := s.compressorFactory(cfg.Compress)
 	if err != nil {
 		s.runPostHook(ctx, cfg, hookEnv, "failure", "")
 		return fmt.Errorf("create compressor: %w", err)
 	}
 
+	if cfg.Compress.Type != "none" && cfg.Compress.Type != "" {
+		s.log.Info(fmt.Sprintf("[%d/%d] compressing %s with %s...", n, totalSteps, formatSize(dumpSize), cfg.Compress.Type))
+	}
+
+	compressStart := utils.Now()
 	compressedFile, err := compressor.Compress(ctx, dumpFile)
 	if err != nil {
 		s.runPostHook(ctx, cfg, hookEnv, "failure", "")
@@ -376,11 +396,22 @@ func (s *Scheduler) runBackup(ctx context.Context, cfg config.BackupConfig) erro
 	}
 	if compressedFile != dumpFile {
 		defer os.Remove(compressedFile)
+		compressedSize := fileSize(compressedFile)
+		compressDur := utils.Now().Sub(compressStart).Round(time.Second)
+		if dumpSize > 0 {
+			reduction := 100 - (float64(compressedSize) / float64(dumpSize) * 100)
+			s.log.Info(fmt.Sprintf("[%d/%d] compressed: %s -> %s (%.0f%% reduction, %s)", n, totalSteps, formatSize(dumpSize), formatSize(compressedSize), reduction, compressDur))
+		} else {
+			s.log.Info(fmt.Sprintf("[%d/%d] compressed: %s (%s)", n, totalSteps, formatSize(compressedSize), compressDur))
+		}
 	}
 
-	// Step 3: Encrypt (optional, based on config)
+	// Step 3: Encrypt (optional)
 	fileToUpload := compressedFile
-	if cfg.Encrypt.Type != "" && cfg.Encrypt.Type != "none" {
+	if hasEncrypt {
+		n = nextStep()
+		s.log.Info(fmt.Sprintf("[%d/%d] encrypting with %s...", n, totalSteps, cfg.Encrypt.Type))
+
 		encryptor, encErr := encrypt.NewEncryptor(cfg.Encrypt)
 		if encErr != nil {
 			s.runPostHook(ctx, cfg, hookEnv, "failure", "")
@@ -396,15 +427,20 @@ func (s *Scheduler) runBackup(ctx context.Context, cfg config.BackupConfig) erro
 			defer os.Remove(encryptedFile)
 		}
 		fileToUpload = encryptedFile
+		s.log.Info(fmt.Sprintf("[%d/%d] encrypted: %s", n, totalSteps, formatSize(fileSize(fileToUpload))))
 	}
 
 	// Step 4: Upload
+	n = nextStep()
+	s.log.Info(fmt.Sprintf("[%d/%d] uploading %s to %s...", n, totalSteps, formatSize(fileSize(fileToUpload)), cfg.Upload.Type))
+
 	uploader, err := s.getOrCreateUploader(cfg.Upload)
 	if err != nil {
 		s.runPostHook(ctx, cfg, hookEnv, "failure", "")
 		return fmt.Errorf("create uploader: %w", err)
 	}
 
+	uploadStart := utils.Now()
 	var remotePath string
 	err = retry.Do(ctx, s.retryCfg, s.log, "upload", func() error {
 		var uploadErr error
@@ -415,9 +451,10 @@ func (s *Scheduler) runBackup(ctx context.Context, cfg config.BackupConfig) erro
 		s.runPostHook(ctx, cfg, hookEnv, "failure", "")
 		return fmt.Errorf("upload failed: %w", err)
 	}
+	uploadDur := utils.Now().Sub(uploadStart).Round(time.Second)
+	s.log.Info(fmt.Sprintf("[%d/%d] uploaded: %s (%s)", n, totalSteps, remotePath, uploadDur))
 
 	duration := utils.Now().Sub(startTime)
-	s.log.Info("backup completed", "backup", cfg.Name, "duration", duration, "path", remotePath)
 
 	// Record success
 	if s.watchdog != nil {
@@ -427,23 +464,29 @@ func (s *Scheduler) runBackup(ctx context.Context, cfg config.BackupConfig) erro
 		s.health.RecordSuccess(cfg.Name, duration)
 	}
 
-	// Step 5: Verify (optional) — failure logs error + notifies but does NOT mark backup as failed (Req 7.4)
+	// Step 5: Verify (optional)
 	if cfg.Verify {
+		n = nextStep()
+		s.log.Info(fmt.Sprintf("[%d/%d] verifying backup...", n, totalSteps))
 		s.runVerify(ctx, cfg, uploader, remotePath)
 	}
 
-	// Step 6: Size tracking — record size and check for anomalies
+	// Size tracking
 	s.runSizeTrack(ctx, cfg, fileToUpload, remotePath)
 
-	// Step 7: Post-hook — failure logs warning (Req 11.4)
+	// Post-hook
 	s.runPostHook(ctx, cfg, hookEnv, "success", remotePath)
 
-	// Step 8: Notify
+	// Notify
 	s.notifySuccess(ctx, cfg, remotePath, duration)
 
-	// Step 9: Retention
+	// Retention
+	if cfg.Retention.Days > 0 || cfg.Retention.KeepLast > 0 {
+		s.log.Info("[cleanup] running retention...")
+	}
 	s.runRetention(cfg)
 
+	s.log.Info(fmt.Sprintf("=== backup complete: %s (%s) ===", cfg.Name, duration.Round(time.Second)))
 	return nil
 }
 
@@ -588,4 +631,32 @@ func (s *Scheduler) notifySuccess(ctx context.Context, cfg config.BackupConfig, 
 func (s *Scheduler) notifyFailure(ctx context.Context, cfg config.BackupConfig, backupErr error) {
 	msg := fmt.Sprintf("Backup '%s' failed: %v", cfg.Name, backupErr)
 	s.sendNotification(ctx, cfg, msg)
+}
+
+// fileSize returns the size of a file in bytes, or 0 if the file can't be stat'd.
+func fileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+// formatSize returns a human-readable byte size.
+func formatSize(b int64) string {
+	const (
+		kb = 1024
+		mb = kb * 1024
+		gb = mb * 1024
+	)
+	switch {
+	case b >= gb:
+		return fmt.Sprintf("%.1f GB", float64(b)/float64(gb))
+	case b >= mb:
+		return fmt.Sprintf("%.1f MB", float64(b)/float64(mb))
+	case b >= kb:
+		return fmt.Sprintf("%.1f KB", float64(b)/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
 }

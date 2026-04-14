@@ -9,15 +9,14 @@ import (
 )
 
 // progressMonitor polls a file's size at a fixed interval and logs growth.
-// It runs until the context is cancelled or the done channel is closed.
-// This gives users visibility into long-running pg_dump/mysqldump operations
-// that otherwise produce no output for minutes.
+// Gives users visibility into long-running pg_dump/mysqldump operations.
 type progressMonitor struct {
 	filePath string
 	logger   *slog.Logger
 	database string
 	tool     string
 	interval time.Duration
+	started  time.Time
 }
 
 func newProgressMonitor(filePath string, logger *slog.Logger, database string, tool string) *progressMonitor {
@@ -30,9 +29,10 @@ func newProgressMonitor(filePath string, logger *slog.Logger, database string, t
 	}
 }
 
-// start begins polling in a goroutine. Returns a function to call when the
-// dump is complete (stops the monitor).
+// start begins polling in a goroutine. Returns a stop function.
+// Call stop BEFORE logging completion to avoid a stale progress line.
 func (p *progressMonitor) start(ctx context.Context) func() {
+	p.started = time.Now()
 	done := make(chan struct{})
 	go p.run(ctx, done)
 	return func() { close(done) }
@@ -42,36 +42,25 @@ func (p *progressMonitor) run(ctx context.Context, done <-chan struct{}) {
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 
-	start := time.Now()
-
 	for {
 		select {
 		case <-done:
-			// Final size report
-			p.logSize(start)
 			return
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			p.logSize(start)
+			p.logSize()
 		}
 	}
 }
 
-func (p *progressMonitor) logSize(start time.Time) {
+func (p *progressMonitor) logSize() {
 	info, err := os.Stat(p.filePath)
 	if err != nil {
-		return // file may not exist yet or was cleaned up
+		return
 	}
-
-	size := info.Size()
-	elapsed := time.Since(start).Round(time.Second)
-
-	p.logger.Info(fmt.Sprintf("%s in progress", p.tool),
-		"database", p.database,
-		"size", formatBytes(size),
-		"elapsed", elapsed,
-	)
+	elapsed := time.Since(p.started).Round(time.Second)
+	p.logger.Info("      "+formatBytes(info.Size())+" written", "elapsed", elapsed)
 }
 
 // formatBytes returns a human-readable byte size.
