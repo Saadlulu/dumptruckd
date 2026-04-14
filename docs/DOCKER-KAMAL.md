@@ -155,6 +155,12 @@ kamal accessory exec dumptruckd --cmd "dumptruckd --once"
 
 # Dry-run to validate config, S3 access, and schedule
 kamal accessory exec dumptruckd --cmd "dumptruckd --dry-run"
+
+# Check daemon status, backup history, and disk usage
+kamal accessory exec dumptruckd --cmd "dumptruckd status"
+
+# Same in JSON (for scripting)
+kamal accessory exec dumptruckd --cmd "dumptruckd status --json"
 ```
 
 ## Local Filesystem Backups

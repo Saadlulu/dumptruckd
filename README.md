@@ -2,13 +2,32 @@
 
 A modular database backup daemon written in Go. Handles periodic dumps, compression, encryption, upload, verification, notifications, and retention cleanup.
 
-## What it does
+## How it works
 
 ```
-Cron Trigger -> Pre-Hook -> Dump -> Compress -> Encrypt -> Upload -> Verify -> Post-Hook -> Notify -> Cleanup
+                         ┌─────────────────────────────────────────┐
+                         │            dumptruckd pipeline          │
+                         └─────────────────────────────────────────┘
+
+  ┌───────────┐    ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌──────────┐
+  │  Schedule  │───>│   Dump   │───>│ Compress │───>│  Encrypt  │───>│  Upload  │
+  │           │    │          │    │          │    │ (optional) │    │          │
+  │  cron     │    │ postgres │    │ gzip     │    │ age / gpg  │    │ s3       │
+  │           │    │ mysql    │    │ none     │    │            │    │ local    │
+  └───────────┘    └──────────┘    └──────────┘    └───────────┘    └──────────┘
+       │                                                                 │
+  ┌────v──────┐                                                    ┌─────v────┐
+  │ Pre-Hook  │              ┌──────────┐    ┌───────────┐         │  Verify  │
+  │ (optional)│              │  Notify  │<───│ Post-Hook │         │(optional)│
+  └───────────┘              │          │    │ (optional) │         └──────────┘
+                             │ slack    │    └───────────┘
+                             │ webhook  │    ┌───────────┐
+                             │ none     │    │  Cleanup  │
+                             └──────────┘    │ retention │
+                                             └───────────┘
 ```
 
-Each stage is an interface. Swap backends by implementing the interface and adding a case to the factory function.
+Every stage is an interface. Add a new database, compressor, or upload target by implementing the interface and registering it in the factory — no existing code changes needed.
 
 ## Supported backends
 
@@ -89,6 +108,8 @@ dumptruckd -dump-config         Print the final resolved config as TOML and exit
 dumptruckd -version             Print version and exit
 dumptruckd restore --backup <name> --latest          Restore most recent backup
 dumptruckd restore --backup <name> --timestamp <ts>  Restore specific backup
+dumptruckd status                                    Show daemon status, backup history, and disk usage
+dumptruckd status --json                             Same as above, machine-readable JSON output
 ```
 
 `--once` is designed for single-shot container execution. No scheduler, no watchdog, no health server. Exit 0 on success, exit 1 on failure.
@@ -151,6 +172,12 @@ On-demand backup from Kamal:
 
 ```bash
 kamal accessory exec dumptruckd --cmd "dumptruckd --once"
+```
+
+Check status from Kamal:
+
+```bash
+kamal accessory exec dumptruckd --cmd "dumptruckd status"
 ```
 
 Restore from Kamal:
@@ -290,6 +317,51 @@ Endpoints:
 - `GET /metrics` -- Prometheus format (`dumptruckd_up`, `dumptruckd_backup_runs_total`, `dumptruckd_backup_failures_total`).
 
 Optional auth: set `HEALTH_BEARER_TOKEN` env var or `token` in config.
+
+### Status command
+
+Check daemon state, backup history, and disk usage from the command line:
+
+```bash
+dumptruckd status
+```
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  dumptruckd                                                    │
+├─ Daemon ───────────────────────────────────────────────────────┤
+│  Status         RUNNING                                        │
+│  Uptime         5d 3h 22m                                      │
+│  Since          2026-04-09 03:21:24                            │
+│  Jobs           2 configured                                   │
+├─ prod-postgres ────────────────────────────────────────────────┤
+│  Database       myapp_production (postgres)                    │
+│  Schedule       0 0 2 * * *                                    │
+│  Upload         /var/backups/dumptruckd                        │
+│  Retention      30 days + keep last 7                          │
+│                                                                │
+│  Health         OK                                             │
+│  Last Success   2026-04-14 02:00:12 (2m34s)                    │
+│  Last Size      768.0 KB                                       │
+│  Runs           142 total, 1 failed                            │
+│  Next Run       2026-04-15 02:00:00 (in 17h 59m)               │
+│                                                                │
+│  On Disk        3 files, 1.7 MB total                          │
+│  Latest File    prod-postgres_20260414_020000.sql.gz           │
+│  Latest Size    768.0 KB                                       │
+│  Latest Date    2026-04-14 02:03:12                            │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Use `--json` for scripting and monitoring integrations:
+
+```bash
+dumptruckd status --json | jq '.backups[0].live.run_count'
+```
+
+The status command queries the health endpoint on localhost (requires `health.enabled = true`). For local uploads, it also scans the filesystem for backup file counts and sizes. When the daemon is not running, it still shows config info and whatever is on disk.
+
+No sensitive data is exposed -- no hostnames, credentials, or connection details.
 
 ### S3-compatible storage
 
