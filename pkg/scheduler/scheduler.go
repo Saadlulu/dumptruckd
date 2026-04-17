@@ -161,9 +161,17 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		if _, err := s.compressorFactory(backupCfg.Compress); err != nil {
 			return fmt.Errorf("backup %s: %w", backupCfg.Name, err)
 		}
-		if _, err := s.uploaderFactory(backupCfg.Upload); err != nil {
+		uploader, err := s.uploaderFactory(backupCfg.Upload)
+		if err != nil {
 			return fmt.Errorf("backup %s: %w (check env vars and config)", backupCfg.Name, err)
 		}
+		// Cache the uploader so we don't recreate it later
+		key := fmt.Sprintf("%s:%s:%s:%s:%s:%s",
+			backupCfg.Upload.Type, backupCfg.Upload.S3.Bucket, backupCfg.Upload.S3.Region,
+			backupCfg.Upload.S3.Endpoint, backupCfg.Upload.S3.Prefix, backupCfg.Upload.Path)
+		s.uploaderCacheMu.Lock()
+		s.uploaderCache[key] = uploader
+		s.uploaderCacheMu.Unlock()
 	}
 
 	cronParser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)

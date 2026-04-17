@@ -4,7 +4,8 @@ RUN apk add --no-cache \
     postgresql17-client \
     mysql-client \
     ca-certificates \
-    tzdata
+    tzdata \
+    su-exec
 
 RUN addgroup -g 1000 dumptruckd && \
     adduser -D -u 1000 -G dumptruckd dumptruckd
@@ -12,11 +13,12 @@ RUN addgroup -g 1000 dumptruckd && \
 WORKDIR /app
 
 COPY dumptruckd /usr/local/bin/dumptruckd
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 COPY config/example-single-file.toml /app/config/example.toml
 
 RUN mkdir -p /app/config /var/backups/dumptruckd && \
     chown -R dumptruckd:dumptruckd /app /var/backups/dumptruckd
 
-USER dumptruckd
-
-ENTRYPOINT ["dumptruckd"]
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["dumptruckd"]

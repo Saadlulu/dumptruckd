@@ -31,11 +31,13 @@ FROM alpine:3.21
 # Install runtime dependencies
 # postgresql17-client provides pg_dump 17 (required for PG 17 servers)
 # postgresql-client is kept as fallback for PG 16 and earlier
+# su-exec is used by the entrypoint to drop from root to the app user
 RUN apk add --no-cache \
     postgresql17-client \
     mysql-client \
     ca-certificates \
-    tzdata
+    tzdata \
+    su-exec
 
 # Create non-root user
 RUN addgroup -g 1000 dumptruckd && \
@@ -46,7 +48,9 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /bin/dumptruckd /usr/local/bin/dumptruckd
 
-# Copy example config
+# Copy entrypoint and example config
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 COPY config/example-single-file.toml /app/config/example.toml
 
 # Create config and backup directories with correct ownership.
@@ -56,7 +60,9 @@ COPY config/example-single-file.toml /app/config/example.toml
 RUN mkdir -p /app/config /var/backups/dumptruckd && \
     chown -R dumptruckd:dumptruckd /app /var/backups/dumptruckd
 
-USER dumptruckd
+# Run as root so the entrypoint can fix volume ownership, then drop to dumptruckd.
+# The entrypoint uses su-exec to run the main process as the dumptruckd user.
+# This is the standard Docker pattern used by postgres, redis, etc.
 
 # No default CMD args. When run without arguments, dumptruckd auto-discovers
 # config: searches standard paths first, then falls back to DUMPTRUCKD_*
@@ -64,4 +70,5 @@ USER dumptruckd
 # without overriding CMD.
 #
 # To use a config file: docker run ... dumptruckd -config /path/to/config.toml
-ENTRYPOINT ["dumptruckd"]
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["dumptruckd"]

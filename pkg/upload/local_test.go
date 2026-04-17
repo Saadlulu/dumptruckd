@@ -21,12 +21,15 @@ func TestNewLocalUploader_WithPath(t *testing.T) {
 }
 
 func TestNewLocalUploader_EmptyPathUsesDefault(t *testing.T) {
-	// This will try to create /var/backups/dumptruckd which may fail without permissions.
-	// We just verify it doesn't panic and returns a meaningful error or succeeds.
+	// With the startup writability check, creating a LocalUploader with an empty
+	// path will attempt to create and probe /var/backups/dumptruckd. On most CI/test
+	// systems this fails due to permissions, which is the correct behavior — the
+	// error message should guide the user to fix ownership.
 	_, err := NewLocalUploader("")
-	// On most systems this will fail due to permissions, which is fine
 	if err != nil {
-		if !strings.Contains(err.Error(), "permission denied") && !strings.Contains(err.Error(), "create base directory") {
+		if !strings.Contains(err.Error(), "permission denied") &&
+			!strings.Contains(err.Error(), "not writable") &&
+			!strings.Contains(err.Error(), "create base directory") {
 			t.Logf("NewLocalUploader('') returned unexpected error: %v", err)
 		}
 	}
@@ -275,5 +278,45 @@ func TestLocalUploader_ValidatePath_ExactBasePathAllowed(t *testing.T) {
 	err = uploader.validatePath(tmpDir)
 	if err != nil {
 		t.Errorf("validatePath() should accept exact base path, got error: %v", err)
+	}
+}
+
+func TestNewLocalUploader_NonWritablePath(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	readOnlyDir := filepath.Join(tmpDir, "readonly")
+	if err := os.Mkdir(readOnlyDir, 0500); err != nil {
+		t.Fatalf("Failed to create read-only dir: %v", err)
+	}
+
+	_, err := NewLocalUploader(readOnlyDir)
+	if err == nil {
+		t.Fatal("NewLocalUploader() should fail for non-writable directory")
+	}
+	if !strings.Contains(err.Error(), "not writable") {
+		t.Errorf("error should mention 'not writable', got: %v", err)
+	}
+}
+
+func TestNewLocalUploader_CreatesBaseDir(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	newDir := filepath.Join(tmpDir, "new", "nested", "dir")
+
+	uploader, err := NewLocalUploader(newDir)
+	if err != nil {
+		t.Fatalf("NewLocalUploader() error = %v", err)
+	}
+	if uploader == nil {
+		t.Fatal("NewLocalUploader() returned nil")
+	}
+
+	// Verify the directory was created
+	info, err := os.Stat(newDir)
+	if err != nil {
+		t.Fatalf("Base directory was not created: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatal("Base path is not a directory")
 	}
 }

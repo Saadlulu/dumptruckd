@@ -4,27 +4,9 @@ A modular database backup daemon written in Go. Handles periodic dumps, compress
 
 ## How it works
 
-```
-                         ┌─────────────────────────────────────────┐
-                         │            dumptruckd pipeline          │
-                         └─────────────────────────────────────────┘
-
-  ┌───────────┐    ┌──────────┐    ┌──────────┐    ┌───────────┐    ┌──────────┐
-  │  Schedule  │───>│   Dump   │───>│ Compress │───>│  Encrypt  │───>│  Upload  │
-  │           │    │          │    │          │    │ (optional) │    │          │
-  │  cron     │    │ postgres │    │ gzip     │    │ age / gpg  │    │ s3       │
-  │           │    │ mysql    │    │ none     │    │            │    │ local    │
-  └───────────┘    └──────────┘    └──────────┘    └───────────┘    └──────────┘
-       │                                                                 │
-  ┌────v──────┐                                                    ┌─────v────┐
-  │ Pre-Hook  │              ┌──────────┐    ┌───────────┐         │  Verify  │
-  │ (optional)│              │  Notify  │<───│ Post-Hook │         │(optional)│
-  └───────────┘              │          │    │ (optional) │         └──────────┘
-                             │ slack    │    └───────────┘
-                             │ webhook  │    ┌───────────┐
-                             │ none     │    │  Cleanup  │
-                             └──────────┘    │ retention │
-                                             └───────────┘
+```mermaid
+graph LR
+    A["Schedule\ncron"] --> B["Dump\npostgres · mysql"] --> C["Compress\ngzip · none"] --> D["Encrypt\nage · gpg · none"] --> E["Upload\ns3 · local"] --> F["Verify\noptional"] --> G["Notify\nslack · webhook · none"] --> H["Cleanup\nby age · by count"]
 ```
 
 Every stage is an interface. Add a new database, compressor, or upload target by implementing the interface and registering it in the factory — no existing code changes needed.

@@ -16,10 +16,27 @@ type LocalUploader struct {
 }
 
 // NewLocalUploader creates a new local filesystem uploader.
+// It verifies the base path exists and is writable so permission errors are
+// caught at startup rather than hours later when the first backup runs.
 func NewLocalUploader(basePath string) (*LocalUploader, error) {
 	if basePath == "" {
 		basePath = "/var/backups/dumptruckd"
 	}
+
+	// Ensure the base directory exists.
+	if err := os.MkdirAll(basePath, 0750); err != nil {
+		return nil, fmt.Errorf("create base directory %q: %w (ensure the path is writable by UID %d or run: chown %d %s)",
+			basePath, err, os.Getuid(), os.Getuid(), basePath)
+	}
+
+	// Verify the directory is actually writable by attempting a temp file.
+	probe, err := os.CreateTemp(basePath, ".dumptruckd-probe-*")
+	if err != nil {
+		return nil, fmt.Errorf("upload path %q is not writable: %w (ensure the directory is owned by UID %d or run: chown %d %s)",
+			basePath, err, os.Getuid(), os.Getuid(), basePath)
+	}
+	probe.Close()
+	os.Remove(probe.Name())
 
 	return &LocalUploader{basePath: basePath}, nil
 }

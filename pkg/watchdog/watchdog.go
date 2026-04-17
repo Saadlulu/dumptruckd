@@ -22,6 +22,7 @@ type jobState struct {
 	lastError        string
 	registeredAt     time.Time
 	consecutiveFails int
+	lastAlertLevel   int // tracks escalation: 0=none, 1=warn, 2=error, 3=critical
 }
 
 // Watchdog monitors backup jobs and alerts when they go stale or fail repeatedly.
@@ -73,9 +74,14 @@ func (w *Watchdog) RecordSuccess(name string) {
 	job.lastSuccess = &now
 	job.consecutiveFails = 0
 	job.lastError = ""
+	job.lastAlertLevel = 0
 }
 
 // RecordFailure records a failed backup and sends an immediate alert.
+// Alert severity escalates with consecutive failures:
+//   - 1-2 failures: WARN
+//   - 3-5 failures: ERROR
+//   - 6+  failures: CRITICAL (with remediation guidance)
 func (w *Watchdog) RecordFailure(name string) {
 	w.mu.Lock()
 	job, ok := w.jobs[name]
@@ -89,41 +95,104 @@ func (w *Watchdog) RecordFailure(name string) {
 	fails := job.consecutiveFails
 	w.mu.Unlock()
 
-	msg := fmt.Sprintf("ALERT: Backup '%s' failed (attempt #%d)", name, fails)
+	var msg string
+	switch {
+	case fails >= 6:
+		msg = fmt.Sprintf("CRITICAL: Backup '%s' has failed %d consecutive times. "+
+			"Manual intervention required. Check upload path permissions and database connectivity.",
+			name, fails)
+	case fails >= 3:
+		msg = fmt.Sprintf("ERROR: Backup '%s' has failed %d consecutive times. "+
+			"Investigate before the next scheduled run.",
+			name, fails)
+	default:
+		msg = fmt.Sprintf("ALERT: Backup '%s' failed (attempt #%d)", name, fails)
+	}
 	w.sendAlert(msg)
 }
 
 // CheckAll checks all registered jobs for staleness.
 // Returns the names of stale backups.
+// Alert severity escalates over time to avoid repeating the same WARN indefinitely:
+//   - First detection: WARN
+//   - After 2x interval without success: ERROR
+//   - After 4x interval without success: CRITICAL (with remediation guidance)
 func (w *Watchdog) CheckAll() []string {
 	w.mu.Lock()
 
 	var stale []string
-	var alerts []string
+	type alertMsg struct {
+		msg   string
+		level int
+	}
+	var alerts []alertMsg
 	now := utils.Now()
 
 	for name, job := range w.jobs {
 		deadline := job.interval * 2
 
+		var staleSince time.Duration
+		isMissing := false
+
 		if job.lastSuccess != nil {
-			if now.Sub(*job.lastSuccess) > deadline {
-				stale = append(stale, name)
-				alerts = append(alerts, fmt.Sprintf("ALERT: Backup '%s' is stale -- last success was %s ago (expected every %s)",
-					name, now.Sub(*job.lastSuccess).Round(time.Minute), job.interval))
+			staleSince = now.Sub(*job.lastSuccess)
+			if staleSince > deadline {
+				isMissing = true
 			}
 		} else {
-			if now.Sub(job.registeredAt) > deadline {
-				stale = append(stale, name)
-				alerts = append(alerts, fmt.Sprintf("ALERT: Backup '%s' has never completed successfully -- registered %s ago",
-					name, now.Sub(job.registeredAt).Round(time.Minute)))
+			staleSince = now.Sub(job.registeredAt)
+			if staleSince > deadline {
+				isMissing = true
 			}
 		}
+
+		if !isMissing {
+			continue
+		}
+
+		stale = append(stale, name)
+
+		// Determine escalation level based on how long the backup has been stale
+		var level int
+		switch {
+		case staleSince > job.interval*4:
+			level = 3 // CRITICAL
+		case staleSince > job.interval*2:
+			level = 2 // ERROR
+		default:
+			level = 1 // WARN
+		}
+
+		// Only alert if the level has escalated since the last alert
+		if level <= job.lastAlertLevel {
+			continue
+		}
+		job.lastAlertLevel = level
+
+		var msg string
+		switch {
+		case job.lastSuccess != nil && level >= 3:
+			msg = fmt.Sprintf("CRITICAL: Backup '%s' is stale — last success was %s ago (expected every %s). "+
+				"Manual intervention required. Check upload path permissions and database connectivity.",
+				name, staleSince.Round(time.Minute), job.interval)
+		case job.lastSuccess != nil:
+			msg = fmt.Sprintf("ALERT: Backup '%s' is stale — last success was %s ago (expected every %s)",
+				name, staleSince.Round(time.Minute), job.interval)
+		case level >= 3:
+			msg = fmt.Sprintf("CRITICAL: Backup '%s' has never completed successfully — registered %s ago. "+
+				"Manual intervention required. Check upload path permissions and database connectivity.",
+				name, staleSince.Round(time.Minute))
+		default:
+			msg = fmt.Sprintf("ALERT: Backup '%s' has never completed successfully — registered %s ago",
+				name, staleSince.Round(time.Minute))
+		}
+		alerts = append(alerts, alertMsg{msg: msg, level: level})
 	}
 
 	w.mu.Unlock()
 
-	for _, msg := range alerts {
-		w.sendAlert(msg)
+	for _, a := range alerts {
+		w.sendAlert(a.msg)
 	}
 
 	return stale
